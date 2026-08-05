@@ -2,7 +2,6 @@
 noise, propensity, learner), fit a CATE learner on the training sample, predict on the
 test distribution, and evaluate the estimated ATE against the true ATE.
 """
-import functools
 import sys
 from pathlib import Path
 
@@ -32,11 +31,14 @@ rng = np.random.default_rng(config.SEED)
 # base_code/covariates.py - training-distribution covariates
 train_x = covariates.normal(mean=0.0, sd=1.0, n=1000, rng=rng)  #editable
 
-# base_code/response_surface.py - the mechanism, shared by train and test
-surface = functools.partial(response_surface.linear_homogeneous, intercept=0.0, slope=1.0, treatment_effect=2.0)  #editable
+# base_code/response_surface.py - mu0's shape, and what gets added on top for mu1 (the treatment effect);
+# shared by train and test
+mu0_shape = lambda x: response_surface.linear(x, slope=1.0)  #editable
+treatment_effect_shape = lambda x: response_surface.constant(x, value=2.0)  #editable
 
-# apply the configured surface to the training covariates
-mu0_train, mu1_train = surface(train_x)  #derived
+# apply the configured shapes to the training covariates
+mu0_train = mu0_shape(train_x)  #derived
+mu1_train = mu0_train + treatment_effect_shape(train_x)  #derived
 
 # base_code/noise.py - noise added to the training potential outcomes
 e0, e1 = noise.homoskedastic_gaussian(train_x, sd=1.0, rng=rng)  #editable
@@ -50,10 +52,11 @@ a_train = propensity.get_assignment(e_x, rng=rng)  #derived
 y_train = np.where(a_train == 1, y1_train, y0_train)  #derived
 
 # base_code/covariates.py - test/deployment-distribution covariates (shifted mean)
-test_x = covariates.normal(mean=100.0, sd=1.0, n=1000, rng=rng)  #editable
+test_x = covariates.normal(mean=5.0, sd=1.0, n=1000, rng=rng)  #editable
 
-# true mu0(x), mu1(x) on the test distribution, same surface (no noise, no propensity: we know the truth)
-mu0_test, mu1_test = surface(test_x)  #derived
+# true mu0(x), mu1(x) on the test distribution, same shapes (no noise, no propensity: we know the truth)
+mu0_test = mu0_shape(test_x)  #derived
+mu1_test = mu0_test + treatment_effect_shape(test_x)  #derived
 tau_test = mu1_test - mu0_test  #derived
 
 # base_code/cate_learners.py - the CATE learner to train and evaluate
