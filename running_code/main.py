@@ -46,8 +46,8 @@ y0_train, y1_train = noise.apply_noise(mu0_train, mu1_train, e0, e1)  #derived
 
 # base_code/propensity.py - treatment assignment on the training sample
 e_x = propensity.constant(train_x, p=0.5)  #editable
-w_train = propensity.get_assignment(e_x, rng=rng)  #derived
-y_train = np.where(w_train == 1, y1_train, y0_train)  #derived
+a_train = propensity.get_assignment(e_x, rng=rng)  #derived
+y_train = np.where(a_train == 1, y1_train, y0_train)  #derived
 
 # base_code/covariates.py - test/deployment-distribution covariates (shifted mean)
 test_x = covariates.normal(mean=100.0, sd=1.0, n=1000, rng=rng)  #editable
@@ -66,7 +66,7 @@ learner = cate_learners.TLearner(base_learner="rf")  #editable
 # -----------------------------------------------------------------------------
 
 # fit the CATE learner on the training sample, then predict on the test distribution
-learner.fit(train_x, y_train, w_train)
+learner.fit(train_x, y_train, a_train)
 tau_hat_test = learner.predict(test_x)
 
 # -----------------------------------------------------------------------------
