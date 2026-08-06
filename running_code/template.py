@@ -1,6 +1,8 @@
-"""Entry point: configure an experiment (training/test distributions, response surface,
-noise, propensity, learner), fit a CATE learner on the training sample, predict on the
-test distribution, and evaluate the estimated ATE against the true ATE.
+"""Annotated template: explains the experiment pipeline (training/test distributions,
+response surface, noise, propensity, learner) for an outsider, then fits a CATE learner and
+evaluates its estimated ATE against the true ATE. Copy this file to start a new scenario
+script, then strip these explanations down to comments that describe the scenario itself
+(see e.g. normal_linear_mu0+constant_XLearner.py).
 """
 import sys
 from pathlib import Path
@@ -60,7 +62,7 @@ mu1_test = mu0_test + treatment_effect_shape(test_x)  #derived
 tau_test = mu1_test - mu0_test  #derived
 
 # base_code/cate_learners.py - the CATE learner to train and evaluate
-learner = cate_learners.TLearner(base_learner="rf")  #editable
+learner = cate_learners.XLearner(base_learner="rf")  #editable
 
 # =============================================================================
 
