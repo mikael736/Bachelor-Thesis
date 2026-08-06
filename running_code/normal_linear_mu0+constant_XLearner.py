@@ -67,6 +67,7 @@ learner = experiment.fit_learner(
 
 test_means = np.linspace(-5.0, 5.0, 11)
 test_scenarios = [covariates.normal(mean=mean, sd=1.0, n=1000, rng=rng) for mean in test_means]
+test_distribution = [f"N({mean:.1f},1.0)" for mean in test_means]
 
 # -----------------------------------------------------------------------------
 # 3. Evaluate the fitted learner on each test scenario
@@ -79,7 +80,7 @@ biases = [
 
 results = {
     "scenario_name": scenario_name,
-    "test_mean": test_means.tolist(),
+    "test_distribution": test_distribution,
     "bias": biases,
 }
 
@@ -87,4 +88,8 @@ results = {
 # 4. Plot results
 # -----------------------------------------------------------------------------
 
-# TODO: call a plotting function from visualisation_code/ with results (in-memory, no file I/O)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "visualisation_code"))
+from plot_bias_vs_test_mean import plot_bias_vs_test_mean
+
+output_dir = Path(__file__).resolve().parent.parent / "visualisation_output"
+plot_bias_vs_test_mean([results], output_dir / f"{Path(__file__).stem}.png")
