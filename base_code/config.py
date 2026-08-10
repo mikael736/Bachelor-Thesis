@@ -4,4 +4,8 @@
 SEED = 42
 
 # --- Simulation sizes ---
-DEFAULT_POPULATION_SIZE = 10_000  # used whenever a population size isn't explicitly given
+TRAIN_POPULATION_SIZE = 1000  # used whenever a training population size isn't explicitly given
+TEST_POPULATION_SIZE = 20_000  # used whenever a test population size isn't explicitly given
+
+# --- Replication ---
+N_REPS = 10  # number of independent sample/fit/evaluate replications per scenario
