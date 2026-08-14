@@ -60,7 +60,7 @@ test_x = covariates.normal(config.TEST_POPULATION_SIZE, mean=5.0, sd=1.0, rng=rn
 
 # fit the CATE learner on the training sample (simulates outcomes from mu0_shape/mu1_shape,
 # noise, and propensity internally - see base_code/experiment.py)
-learner = experiment.fit_learner(
+learner, a_train = experiment.fit_learner(
     train_x,
     mu0_shape=mu0_shape,
     treatment_effect_shape=treatment_effect_shape,

@@ -48,11 +48,24 @@ class XLearner(BaseCATELearner):
     per-unit treatment-effect estimates on x, separately per arm.
     """
 
-    def __init__(self, base_learner: str = "rf", propensity_learner: str = "rf", *, random_state: int = config.SEED):
+    def __init__(
+        self,
+        base_learner: str = "rf",
+        mu0_learner: str | None = None,
+        propensity_learner: str = "rf",
+        *,
+        random_state: int = config.SEED,
+    ):
+        """mu0_learner, if given, overrides base_learner just for mu0 - e.g. a correctly-specified
+        parametric model for the control/natural-history surface, while mu1, tau0, and tau1 stay
+        on the flexible base_learner. Defaults to base_learner (no override).
+        """
+        mu0_learner = mu0_learner or base_learner
         self.base_learner = base_learner
+        self.mu0_learner = mu0_learner
         self.propensity_learner = propensity_learner
-        self.name = f"XLearner[{base_learner}]"
-        self.mu0_model = get_regressor(base_learner, random_state=random_state)
+        self.name = f"XLearner[{base_learner}, mu0={mu0_learner}]"
+        self.mu0_model = get_regressor(mu0_learner, random_state=random_state)
         self.mu1_model = get_regressor(base_learner, random_state=random_state)
         self.tau0_model = get_regressor(base_learner, random_state=random_state)
         self.tau1_model = get_regressor(base_learner, random_state=random_state)

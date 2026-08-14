@@ -51,6 +51,16 @@ NORMAL_MEAN_SWEEP1 = TestDistribution(
 )
 
 
+_normal_mean_sweep2_means = np.linspace(-10.0, 10.0, 11)
+NORMAL_MEAN_SWEEP2 = TestDistribution(
+    labels=[f"N({mean:.1f},1.0)" for mean in _normal_mean_sweep2_means],
+    positions=_normal_mean_sweep2_means,
+    covariates=lambda rng: [
+        normal(config.TEST_POPULATION_SIZE, mean=mean, sd=1.0, rng=rng) for mean in _normal_mean_sweep2_means
+    ],
+)
+
+
 _beta_shape_sweep1_a = np.linspace(1.5, 8.5, 11)
 _beta_shape_sweep1_params = [(a, 10.0 - a) for a in _beta_shape_sweep1_a]
 BETA_SHAPE_SWEEP1 = TestDistribution(
@@ -63,6 +73,7 @@ BETA_SHAPE_SWEEP1 = TestDistribution(
 
 
 TEST_DISTRIBUTIONS = {
-    "normal_mean_sweep1": NORMAL_MEAN_SWEEP1,
-    "beta_shape_sweep1": BETA_SHAPE_SWEEP1,
+    "normal-mean-sweep1": NORMAL_MEAN_SWEEP1,
+    "normal-mean-sweep2": NORMAL_MEAN_SWEEP2,
+    "beta-shape-sweep1": BETA_SHAPE_SWEEP1,
 }
