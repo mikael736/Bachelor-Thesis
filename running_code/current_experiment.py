@@ -30,6 +30,8 @@ import save_run
 
 seed_seq = np.random.SeedSequence(config.SEED)
 rep_rngs = [np.random.default_rng(s) for s in seed_seq.spawn(config.N_REPS)]
+# fixed target sample, drawn once and reused across all reps
+test_rng = np.random.default_rng(config.SEED)
 
 # -----------------------------------------------------------------------------
 # 1. Training: population, treatment mechanism, and CATE learner(s). Refit per replication.
@@ -41,8 +43,8 @@ population_tag = "normal0-1"
 train_covariates = lambda rng: covariates.normal(config.TRAIN_POPULATION_SIZE, mean=0.0, sd=1.0, rng=rng)
 
 # mu0(x) = exp(x)  ->  exponential baseline
-mu0_tag = "exponential"
-mu0_shape = lambda x: response_surface.exponential(x, scale=1.0)
+mu0_tag = "constant"
+mu0_shape = lambda x: response_surface.constant(x, value=0.0)
 # mu1(x) = mu0(x) + x  ->  linear treatment effect, tau(x) = x
 mu1_tag = "mu0+linear"
 treatment_effect_shape = lambda x: response_surface.linear(x, slope=1.0)
@@ -58,7 +60,7 @@ propensity_shape = lambda x: propensity.constant(x, p=0.5)
 # informed mu0 alone reduces extrapolation bias while mu1/tau0/tau1 stay flexible (NN) in both.
 # random_state must be an int (sklearn doesn't accept a Generator), so draw one off rng.
 learners = [
-    ("XLearnerNN", lambda rng: cate_learners.XLearner(base_learner="nn", random_state=int(rng.integers(0, 2**32 - 1)))),
+    ("XLearnerRF", lambda rng: cate_learners.XLearner(base_learner="rf", random_state=int(rng.integers(0, 2**32 - 1)))),
     # ("XLearnerNN+mu0Exponential", lambda rng: cate_learners.XLearner(
     #         base_learner="nn", mu0_learner="exponential", random_state=int(rng.integers(0, 2**32 - 1))
     #     ),
@@ -66,7 +68,7 @@ learners = [
 ]
 
 # named test-distribution sweep to evaluate against, from covariates.TEST_DISTRIBUTIONS
-test_dist_name = "normal-mean-sweep1"
+test_dist_name = "normal-mean-sweep2"
 test_dist = covariates.TEST_DISTRIBUTIONS[test_dist_name]
 
 # identifies this run's output directory - composed from the *_tag values above, so it stays in
@@ -83,6 +85,8 @@ run_tag = f"{population_tag}_{mu0_tag}_{mu1_tag}_{learner_tag}_{test_dist_name}"
 # comparison - only the learner differs, not the data.
 # -----------------------------------------------------------------------------
 
+test_scenarios = test_dist.covariates(test_rng)
+
 bias_reps = {tag: [] for tag, _ in learners}
 train_x_last, train_a_last = None, None
 for rep_num, rep_rng in enumerate(rep_rngs, start=1):
@@ -96,7 +100,6 @@ for rep_num, rep_rng in enumerate(rep_rngs, start=1):
         propensity_shape=propensity_shape,
         rng=rep_rng,
     )
-    test_scenarios = test_dist.covariates(rep_rng)
 
     for tag, make_learner in learners:
         fitted_learner = make_learner(rep_rng).fit(train_x, y_train, a_train)
