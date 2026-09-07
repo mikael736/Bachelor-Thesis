@@ -28,44 +28,37 @@ def beta(n: int, *, a: float, b: float, rng: np.random.Generator) -> np.ndarray:
 
 @dataclass(frozen=True)
 class TestDistribution:
-    """One named sweep of test populations. labels/positions are its plot-facing description
-    (a string and a numeric x-axis position per sweep point) - positions is just "where this
-    point sits on the x-axis", not necessarily the distribution's statistical mean (it happens
-    to coincide for some sweeps, e.g. beta_shape_sweep1, but that's not guaranteed in general).
-    covariates(rng), called once per replication, draws a fresh sample for every sweep point and
-    returns them as a list, in the same order as labels/positions.
+    """One named sweep of test populations. labels is its plot-facing description, one string per
+    sweep point. covariates(rng) draws a fresh sample for every sweep point and returns them as a
+    list, in the same order as labels.
     """
 
     labels: list[str]
-    positions: np.ndarray
     covariates: Callable[[np.random.Generator], list[np.ndarray]]
 
 
-_normal_mean_sweep1_means = np.linspace(-5.0, 5.0, 11)
+_normal_mean_sweep1_means = np.linspace(-1.0, 1.0, 5)
 NORMAL_MEAN_SWEEP1 = TestDistribution(
     labels=[f"N({mean:.1f},1.0)" for mean in _normal_mean_sweep1_means],
-    positions=_normal_mean_sweep1_means,
     covariates=lambda rng: [
         normal(config.TEST_POPULATION_SIZE, mean=mean, sd=1.0, rng=rng) for mean in _normal_mean_sweep1_means
     ],
 )
 
 
-_normal_mean_sweep2_means = np.linspace(-10.0, 10.0, 11)
+_normal_mean_sweep2_means = np.linspace(-2.0, 2.0, 9)
 NORMAL_MEAN_SWEEP2 = TestDistribution(
     labels=[f"N({mean:.1f},1.0)" for mean in _normal_mean_sweep2_means],
-    positions=_normal_mean_sweep2_means,
     covariates=lambda rng: [
         normal(config.TEST_POPULATION_SIZE, mean=mean, sd=1.0, rng=rng) for mean in _normal_mean_sweep2_means
     ],
 )
 
 
-_beta_shape_sweep1_a = np.linspace(1.5, 8.5, 11)
+_beta_shape_sweep1_a = np.linspace(2, 8, 11)
 _beta_shape_sweep1_params = [(a, 10.0 - a) for a in _beta_shape_sweep1_a]
 BETA_SHAPE_SWEEP1 = TestDistribution(
     labels=[f"Beta({a:.1f},{b:.1f})" for a, b in _beta_shape_sweep1_params],
-    positions=_beta_shape_sweep1_a / 10.0,
     covariates=lambda rng: [
         beta(config.TEST_POPULATION_SIZE, a=a, b=b, rng=rng) for a, b in _beta_shape_sweep1_params
     ],

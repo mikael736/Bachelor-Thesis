@@ -73,13 +73,19 @@ def fit_learner(
     return learner, a_train
 
 
-def evaluate(learner, test_x: np.ndarray, *, mu0_shape, mu1_shape=None, treatment_effect_shape=None) -> tuple[float, float, float]:
+def true_tau(x: np.ndarray, *, mu0_shape=None, mu1_shape=None, treatment_effect_shape=None) -> np.ndarray:
+    if treatment_effect_shape is not None:
+        return treatment_effect_shape(x)
+    if mu1_shape is not None:
+        return mu1_shape(x) - mu0_shape(x)
+    raise ValueError("Provide either mu1_shape or treatment_effect_shape.")
+
+
+def evaluate(learner, test_x: np.ndarray, *, mu0_shape=None, mu1_shape=None, treatment_effect_shape=None) -> tuple[float, float, float]:
     """True mu0(x)/mu1(x) on the test distribution (no noise, no propensity: we know the truth),
     compared against the fitted learner's predictions. Returns (true_ate, estimated_ate, bias).
     """
-    mu0_test = mu0_shape(test_x)
-    mu1_test = _mu1(test_x, mu0_test, mu1_shape=mu1_shape, treatment_effect_shape=treatment_effect_shape)
-    tau_test = mu1_test - mu0_test
+    tau_test = true_tau(test_x, mu0_shape=mu0_shape, mu1_shape=mu1_shape, treatment_effect_shape=treatment_effect_shape)
     tau_hat_test = learner.predict(test_x)
 
     true = evaluation.true_ate(tau_test)

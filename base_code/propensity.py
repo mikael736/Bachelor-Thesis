@@ -13,3 +13,8 @@ def get_assignment(e: np.ndarray, *, rng: np.random.Generator) -> np.ndarray:
 def constant(x: np.ndarray, *, p: float) -> np.ndarray:
     """e(x) = p for every unit, independent of x (e.g. p=0.5 for a randomized experiment)."""
     return np.full(shape=x.shape[0], fill_value=p)
+
+
+def linear(x: np.ndarray) -> np.ndarray:
+    """e(x) = x, clipped to [0, 1] so it is a valid probability even when x ranges outside it."""
+    return np.clip(x.ravel(), 0.0, 1.0)

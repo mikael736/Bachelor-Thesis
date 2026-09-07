@@ -1,24 +1,10 @@
-from abc import ABC, abstractmethod
-
 import numpy as np
 
 import config
 from base_learners import get_classifier, get_regressor
 
 
-class BaseCATELearner(ABC):
-    """Common interface for all CATE learners, meta-learner or not."""
-
-    @abstractmethod
-    def fit(self, x, y, a):
-        ...
-
-    @abstractmethod
-    def predict(self, x):
-        ...
-
-
-class TLearner(BaseCATELearner):
+class TLearner:
     """T-learner: the simplest meta-learner, two independent response-surface fits.
 
     mu0 fit on control units, mu1 fit on treated units, no propensity model at all:
@@ -42,7 +28,7 @@ class TLearner(BaseCATELearner):
         return self.mu1_model.predict(x) - self.mu0_model.predict(x)
 
 
-class XLearner(BaseCATELearner):
+class XLearner:
     """X-learner (Kuenzel et al., 2019): a pseudo-outcome method that reuses each arm's fitted
     model to impute the other arm's missing potential outcome, then regresses the resulting
     per-unit treatment-effect estimates on x, separately per arm.
