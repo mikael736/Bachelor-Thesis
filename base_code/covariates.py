@@ -21,6 +21,20 @@ def beta(n: int, *, a: float, b: float, rng: np.random.Generator) -> np.ndarray:
     return rng.beta(a, b, size=(n, 1))
 
 
+def coordinatewise_3d(n: int, *, a: float, b: float, rng: np.random.Generator) -> np.ndarray:
+    """Sample n draws of a 3-D covariate vector (x1, x2, x3), each coordinate defined separately
+    (not a joint 3-D distribution), with
+        x1 ~ Beta(a, b)
+        x2 = 2 * x1          (fully dependent on x1)
+        x3 ~ Beta(2, 8)      (independent of x1 and of (a, b))
+    Returns shape (n, 3), one row per unit and one column per coordinate.
+    """
+    x1 = rng.beta(a, b, size=(n, 1))
+    x2 = 2 * x1
+    x3 = rng.beta(2, 8, size=(n, 1))
+    return np.hstack([x1, x2, x3])
+
+
 # -----------------------------------------------------------------------------
 # Part 2: named test-distribution sweeps
 # -----------------------------------------------------------------------------
@@ -65,8 +79,18 @@ BETA_SHAPE_SWEEP1 = TestDistribution(
 )
 
 
+# same (a, b) sweep as BETA_SHAPE_SWEEP1, but on coordinatewise_3d: only x1 (and hence x2) shifts, x3 stays fixed
+COORDINATEWISE_3D_SHAPE_SWEEP1 = TestDistribution(
+    labels=[f"x1~Beta({a:.1f},{b:.1f})" for a, b in _beta_shape_sweep1_params],
+    covariates=lambda rng: [
+        coordinatewise_3d(config.TEST_POPULATION_SIZE, a=a, b=b, rng=rng) for a, b in _beta_shape_sweep1_params
+    ],
+)
+
+
 TEST_DISTRIBUTIONS = {
     "normal-mean-sweep1": NORMAL_MEAN_SWEEP1,
     "normal-mean-sweep2": NORMAL_MEAN_SWEEP2,
     "beta-shape-sweep1": BETA_SHAPE_SWEEP1,
+    "coordinatewise-3d-shape-sweep1": COORDINATEWISE_3D_SHAPE_SWEEP1,
 }
