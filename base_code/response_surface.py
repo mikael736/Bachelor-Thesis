@@ -27,6 +27,6 @@ def step(x: np.ndarray, *, jump: float = 1.0, threshold: float) -> np.ndarray:
     return jump * (x[:, 0] > threshold)
 
 
-def exponential(x: np.ndarray, *, scale: float = 1.0) -> np.ndarray:
-    """f(x) = scale * exp(x)."""
-    return scale * np.exp(x[:, 0])
+def exponential(x: np.ndarray, *, scale: float = 1.0, multiplier: float = 1.0) -> np.ndarray:
+    """f(x) = scale * exp(multiplier * x)."""
+    return scale * np.exp(multiplier * x[:, 0])

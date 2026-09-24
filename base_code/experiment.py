@@ -5,7 +5,6 @@ some parameter, e.g. the test distribution's mean).
 """
 import numpy as np
 
-import evaluation
 import noise
 import propensity
 
@@ -88,7 +87,7 @@ def evaluate(learner, test_x: np.ndarray, *, mu0_shape=None, mu1_shape=None, tre
     tau_test = true_tau(test_x, mu0_shape=mu0_shape, mu1_shape=mu1_shape, treatment_effect_shape=treatment_effect_shape)
     tau_hat_test = learner.predict(test_x)
 
-    true = evaluation.true_ate(tau_test)
-    estimated = evaluation.estimated_ate(tau_hat_test)
-    bias = evaluation.ate_bias(true, estimated)
+    true = float(np.mean(tau_test))
+    estimated = float(np.mean(tau_hat_test))
+    bias = estimated - true
     return true, estimated, bias

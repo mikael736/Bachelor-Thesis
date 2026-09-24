@@ -7,13 +7,22 @@ import numpy as np
 from matplotlib.lines import Line2D
 
 
+_CATE_MARKERS = ["o", "^", "s", "D", "v", "P", "X"]
+
+
 def _plot_cate(ax, results_list):
     first = results_list[0]
     ax.plot(np.asarray(first["sample_x"]).ravel(), np.asarray(first["cate_true"]).ravel(), color="black", label="True CATE")
 
-    for results in results_list:
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    for i, results in enumerate(results_list):
         label = results.get("label", "Predicted CATE")
-        ax.plot(np.asarray(results["sample_x"]).ravel(), np.asarray(results["sample_pred"]).ravel(), label=label)
+        marker = _CATE_MARKERS[i % len(_CATE_MARKERS)]
+        color = colors[i % len(colors)]
+        ax.scatter(
+            np.asarray(results["sample_x"]).ravel(), np.asarray(results["sample_pred"]).ravel(),
+            label=label, marker=marker, facecolors="none", edgecolors=color, alpha=0.6, linewidths=1.2,
+        )
 
     ax.set_xlabel("$x$")
     ax.set_ylabel(r"$\tau(x)$")
@@ -21,24 +30,29 @@ def _plot_cate(ax, results_list):
 
 
 def _plot_ate(ax, results_list):
-    """Bottom axis: ATE bias per test scenario, equally spaced. Top axis (separate scale):
-    red/blue rug ticks for train_x by train_a (treated/control).
+    """Bottom axis: signed mean ATE bias across replications per test scenario, equally spaced,
+    with an optional shaded 95% CI band (from "bias_ci_half"). Top axis (separate scale): red/blue
+    rug ticks for train_x by train_a (treated/control).
     """
     handles = []
     first = results_list[0]
     n_scenarios = len(first["test_distribution"])
     x_index = np.arange(n_scenarios)
+    ax.axhline(0.0, color="grey", linewidth=0.8, linestyle="--")
     for results in results_list:
         bias = np.asarray(results["bias"])
         label = results.get("label", "ATE bias")
         line, = ax.plot(x_index, bias, marker="o", label=label)
+        if results.get("bias_ci_half") is not None:
+            half = np.asarray(results["bias_ci_half"])
+            ax.fill_between(x_index, bias - half, bias + half, color=line.get_color(), alpha=0.2, linewidth=0)
         handles.append(line)
 
     ax.set_xticks(x_index)
     ax.set_xticklabels(first["test_distribution"])
     ax.set_xlim(-0.5, n_scenarios - 0.5)
     ax.set_xlabel("Test distribution")
-    ax.set_ylabel("ATE bias")
+    ax.set_ylabel("ATE bias (mean ± 95% CI)")
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
 
     train_carrier = next((r for r in results_list if r.get("train_x") is not None), None)

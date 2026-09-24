@@ -16,5 +16,5 @@ def constant(x: np.ndarray, *, p: float) -> np.ndarray:
 
 
 def linear(x: np.ndarray) -> np.ndarray:
-    """e(x) = x, clipped to [0, 1] so it is a valid probability even when x ranges outside it."""
-    return np.clip(x.ravel(), 0.0, 1.0)
+    """e(x) = x, clipped to [0.05, 0.95] so it is a valid probability even when x ranges outside it."""
+    return np.clip(x.ravel(), 0.05, 0.95)
