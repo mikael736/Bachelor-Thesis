@@ -29,10 +29,10 @@ def _plot_cate(ax, results_list):
     ax.legend()
 
 
-def _plot_ate(ax, results_list):
+def _plot_ate(ax, results_list, *, show_train_rug: bool = True):
     """Bottom axis: signed mean ATE bias across replications per test scenario, equally spaced,
     with an optional shaded 95% CI band (from "bias_ci_half"). Top axis (separate scale): red/blue
-    rug ticks for train_x by train_a (treated/control).
+    rug ticks for train_x by train_a (treated/control), only if show_train_rug.
     """
     handles = []
     first = results_list[0]
@@ -55,9 +55,11 @@ def _plot_ate(ax, results_list):
     ax.set_ylabel("ATE bias (mean ± 95% CI)")
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
 
-    train_carrier = next((r for r in results_list if r.get("train_x") is not None), None)
-    if train_carrier is None:
-        raise ValueError("_plot_ate requires one scenario with train_x/train_a (training data is shared)")
+    if not show_train_rug:
+        ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.02, 1), borderaxespad=0)
+        return
+
+    train_carrier = _train_carrier(results_list)
     if train_carrier.get("train_a") is None:
         raise ValueError("_plot_ate requires train_a alongside train_x")
 
@@ -85,9 +87,25 @@ def _plot_ate(ax, results_list):
     ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.02, 1), borderaxespad=0)
 
 
+def _train_carrier(results_list):
+    """The one results dict carrying the (shared) training data train_x/train_a."""
+    train_carrier = next((r for r in results_list if r.get("train_x") is not None), None)
+    if train_carrier is None:
+        raise ValueError("plotting requires one scenario with train_x/train_a (training data is shared)")
+    return train_carrier
+
+
 def plot_experiment(results_list, save_path):
-    fig, (ax_cate, ax_ate) = plt.subplots(1, 2, figsize=(14, 6))
-    _plot_cate(ax_cate, results_list)
-    _plot_ate(ax_ate, results_list)
+    """1-D covariates: CATE panel + ATE panel with training rug. Multidimensional covariates: ATE
+    panel only, without the rug - both plot against a single x axis, which isn't defined yet for d > 1.
+    """
+    multidim = np.asarray(_train_carrier(results_list)["train_x"]).shape[1] > 1
+    if multidim:
+        fig, ax_ate = plt.subplots(1, 1, figsize=(8, 6))
+        _plot_ate(ax_ate, results_list, show_train_rug=False)
+    else:
+        fig, (ax_cate, ax_ate) = plt.subplots(1, 2, figsize=(14, 6))
+        _plot_cate(ax_cate, results_list)
+        _plot_ate(ax_ate, results_list)
     fig.savefig(save_path, bbox_inches="tight")
     plt.close(fig)
