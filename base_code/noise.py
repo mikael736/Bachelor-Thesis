@@ -14,12 +14,7 @@ def _check_1d(x: np.ndarray) -> np.ndarray:
     return x
 
 
-def apply_noise(mu0: np.ndarray, mu1: np.ndarray, e0: np.ndarray, e1: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Add noise draws to the noise-free potential outcomes, returning y0, y1."""
-    return mu0 + e0, mu1 + e1
-
-
-# --- Noise generators: draw e0, e1 to be passed into apply_noise ---
+# --- Noise generators: draw e0, e1, added to mu0(x), mu1(x) in the running script ---
 
 
 def homoskedastic_gaussian(x: np.ndarray, *, sd: float, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:

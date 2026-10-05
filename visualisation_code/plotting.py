@@ -1,111 +1,60 @@
-"""Plot the CATE fit (left panel) and ATE bias vs. test distribution (right panel)."""
+"""Plot actual vs. estimated ATE (left) and mean squared ATE error (right) per test distribution.
+
+Both panels are derived from each results dict's "estimated_ate_reps" (n_reps, n_scenarios) and
+"actual_ate" (n_scenarios), so overwriting "actual_ate" (e.g. with exact values) updates both.
+"""
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.lines import Line2D
 
 
-_CATE_MARKERS = ["o", "^", "s", "D", "v", "P", "X"]
-
-
-def _plot_cate(ax, results_list):
-    first = results_list[0]
-    ax.plot(np.asarray(first["sample_x"]).ravel(), np.asarray(first["cate_true"]).ravel(), color="black", label="True CATE")
-
-    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    for i, results in enumerate(results_list):
-        label = results.get("label", "Predicted CATE")
-        marker = _CATE_MARKERS[i % len(_CATE_MARKERS)]
-        color = colors[i % len(colors)]
-        ax.scatter(
-            np.asarray(results["sample_x"]).ravel(), np.asarray(results["sample_pred"]).ravel(),
-            label=label, marker=marker, facecolors="none", edgecolors=color, alpha=0.6, linewidths=1.2,
-        )
-
-    ax.set_xlabel("$x$")
-    ax.set_ylabel(r"$\tau(x)$")
-    ax.legend()
-
-
-def _plot_ate(ax, results_list, *, show_train_rug: bool = True):
-    """Bottom axis: signed mean ATE bias across replications per test scenario, equally spaced,
-    with an optional shaded 95% CI band (from "bias_ci_half"). Top axis (separate scale): red/blue
-    rug ticks for train_x by train_a (treated/control), only if show_train_rug.
-    """
-    handles = []
-    first = results_list[0]
-    n_scenarios = len(first["test_distribution"])
-    x_index = np.arange(n_scenarios)
-    ax.axhline(0.0, color="grey", linewidth=0.8, linestyle="--")
-    for results in results_list:
-        bias = np.asarray(results["bias"])
-        label = results.get("label", "ATE bias")
-        line, = ax.plot(x_index, bias, marker="o", label=label)
-        if results.get("bias_ci_half") is not None:
-            half = np.asarray(results["bias_ci_half"])
-            ax.fill_between(x_index, bias - half, bias + half, color=line.get_color(), alpha=0.2, linewidth=0)
-        handles.append(line)
-
-    ax.set_xticks(x_index)
-    ax.set_xticklabels(first["test_distribution"])
-    ax.set_xlim(-0.5, n_scenarios - 0.5)
+def _format_scenario_axis(ax, results_list):
+    labels = results_list[0]["test_distribution"]
+    ax.set_xticks(np.arange(len(labels)))
+    ax.set_xticklabels(labels)
+    ax.set_xlim(-0.5, len(labels) - 0.5)
     ax.set_xlabel("Test distribution")
-    ax.set_ylabel("ATE bias (mean ± 95% CI)")
-    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
-    if not show_train_rug:
-        ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.02, 1), borderaxespad=0)
-        return
 
-    train_carrier = _train_carrier(results_list)
-    if train_carrier.get("train_a") is None:
-        raise ValueError("_plot_ate requires train_a alongside train_x")
-
-    train_x = np.asarray(train_carrier["train_x"]).ravel()
-    train_a = np.asarray(train_carrier["train_a"]).ravel()
-    ax_train = ax.twiny()
-    ax_train.vlines(
-        train_x[train_a == 1], 0.97, 1.0, transform=ax_train.get_xaxis_transform(),
-        color="red", alpha=0.15, linewidth=0.8,
+def _plot_ate(ax, results_list):
+    """Actual ATE and each learner's mean estimated ATE across reps. Returns the legend handles."""
+    x_index = np.arange(len(results_list[0]["test_distribution"]))
+    handles = [
+        ax.plot(x_index, np.mean(results["estimated_ate_reps"], axis=0), marker="o", label=results["label"])[0]
+        for results in results_list
+    ]
+    # actual ATE depends only on the test scenario, so it's shared across learners
+    handles += ax.plot(
+        x_index, results_list[0]["actual_ate"], color="black", linestyle="--", marker="x", label="Actual ATE",
     )
-    ax_train.vlines(
-        train_x[train_a == 0], 0.97, 1.0, transform=ax_train.get_xaxis_transform(),
-        color="blue", alpha=0.15, linewidth=0.8,
-    )
-    ax_train.set_xlabel("Train $x$")
 
-    def _rug_handle(color, label):
-        return Line2D(
-            [0], [0], color=color, alpha=0.5, marker="|", linestyle="None",
-            markersize=10, markeredgewidth=1.5, label=label,
-        )
-
-    handles.append(_rug_handle("red", "Train $x$ (treated)"))
-    handles.append(_rug_handle("blue", "Train $x$ (control)"))
-    ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.02, 1), borderaxespad=0)
+    _format_scenario_axis(ax, results_list)
+    ax.set_ylabel("ATE (estimated: mean across reps)")
+    return handles
 
 
-def _train_carrier(results_list):
-    """The one results dict carrying the (shared) training data train_x/train_a."""
-    train_carrier = next((r for r in results_list if r.get("train_x") is not None), None)
-    if train_carrier is None:
-        raise ValueError("plotting requires one scenario with train_x/train_a (training data is shared)")
-    return train_carrier
+def _plot_squared_error(ax, results_list):
+    """mean over reps of (estimated ATE - actual ATE)^2, per scenario."""
+    x_index = np.arange(len(results_list[0]["test_distribution"]))
+    for results in results_list:
+        errors = np.asarray(results["estimated_ate_reps"]) - np.asarray(results["actual_ate"])
+        ax.plot(x_index, np.mean(errors ** 2, axis=0), marker="o", label=results["label"])
+
+    _format_scenario_axis(ax, results_list)
+    ax.set_ylim(bottom=0)
+    ax.set_ylabel("Mean squared ATE error")
 
 
 def plot_experiment(results_list, save_path):
-    """1-D covariates: CATE panel + ATE panel with training rug. Multidimensional covariates: ATE
-    panel only, without the rug - both plot against a single x axis, which isn't defined yet for d > 1.
-    """
-    multidim = np.asarray(_train_carrier(results_list)["train_x"]).shape[1] > 1
-    if multidim:
-        fig, ax_ate = plt.subplots(1, 1, figsize=(8, 6))
-        _plot_ate(ax_ate, results_list, show_train_rug=False)
-    else:
-        fig, (ax_cate, ax_ate) = plt.subplots(1, 2, figsize=(14, 6))
-        _plot_cate(ax_cate, results_list)
-        _plot_ate(ax_ate, results_list)
+    fig, (ax_ate, ax_sq_err) = plt.subplots(1, 2, figsize=(14, 6))
+    handles = _plot_ate(ax_ate, results_list)
+    _plot_squared_error(ax_sq_err, results_list)
+
+    # one legend below both panels (learner colours match across panels)
+    fig.tight_layout()
+    fig.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, 0), ncol=len(handles), frameon=False)
     fig.savefig(save_path, bbox_inches="tight")
     plt.close(fig)

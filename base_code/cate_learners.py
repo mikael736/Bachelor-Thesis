@@ -87,7 +87,7 @@ class DRLearner:
         base_learner: str = "rf",
         propensity_learner: str = "rf",
         *,
-        cross_fit: bool = True,
+        cross_fit: bool = False,
         n_folds: int = 5,
         propensity_clip: float = 0.05,
         random_state: int,

@@ -7,11 +7,9 @@ SOURCE_SNAPSHOT = Path(__file__).read_text(encoding="utf-8")
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent / "base_code"))
 
 import numpy as np
-from scipy import stats
 
 import cate_learners
 import covariates
-import experiment
 import noise
 import propensity
 import response_surface
@@ -22,7 +20,7 @@ import save_run
 # -----------------------------------------------------------------------------
 
 SEED = 42
-N_REPS = 50  # training/evaluation replications averaged into each learner's mean ATE bias
+N_REPS = 50  # training/evaluation replications per learner and test scenario
 TRAIN_POPULATION_SIZE = 1000
 TEST_POPULATION_SIZE = 20_000  # per test-distribution sweep point
 
@@ -40,17 +38,17 @@ population_tag = "beta5-5"
 train_covariates = lambda rng: covariates.beta(TRAIN_POPULATION_SIZE, a=5.0, b=5.0, rng=rng)
 
 # response surfaces: mu0(x) and tau(x) = mu1(x) - mu0(x)
-mu0_tag = "exponential"
-mu0_shape = lambda x: response_surface.exponential(x[:, 0], multiplier=4.0)
-mu1_tag = "mu0+constant"
-treatment_effect_shape = lambda x: response_surface.constant(x[:, 0], value=100.0)
+mu0_tag = "linear"
+mu0_shape = lambda x: response_surface.linear(x[:, 0], slope=50.0)
+mu1_tag = "mu0+linear"
+treatment_effect_shape = lambda x: response_surface.linear(x[:, 0], slope=50.0)
 
 # outcome noise
 noise_sampler = lambda x, rng: noise.homoskedastic_gaussian(x[:, 0], sd=1.0, rng=rng)
 
 # treatment assignment mechanism
-propensity_tag = "inv-linear"
-propensity_shape = lambda x: propensity.linear(1 - x[:, 0])
+propensity_tag = "sigmoid"
+propensity_shape = lambda x: propensity.sigmoid(x[:, 0], center=0.5, multiplier=5.0)
 
 # CATE learners to fit and compare
 learners = [
@@ -65,7 +63,7 @@ test_dist = covariates.TEST_DISTRIBUTIONS[test_dist_name]
 
 # output dir name, composed from the *_tag values above - keep tags current when you edit them
 learner_tag = "-vs-".join(tag for tag, _ in learners)
-run_tag = f"{population_tag}_{mu0_tag}_{mu1_tag}_{propensity_tag}"
+run_tag = f"{mu0_tag}_{mu1_tag}_{propensity_tag}"
 
 # -----------------------------------------------------------------------------
 # 2. Evaluate each learner on each test scenario, over N_REPS replications. Each
@@ -75,55 +73,33 @@ run_tag = f"{population_tag}_{mu0_tag}_{mu1_tag}_{propensity_tag}"
 
 test_scenarios = test_dist.covariates(TEST_POPULATION_SIZE, test_rng)
 
-bias_reps = {tag: [] for tag, _ in learners}
-fitted_learners_last, train_x_last, train_a_last = None, None, None
+estimated_ate_reps = {tag: [] for tag, _ in learners}
 for rep_num, rep_rng in enumerate(rep_rngs, start=1):
     print(f"Round {rep_num}/{N_REPS}")
     train_x = train_covariates(rep_rng)
-    y_train, a_train = experiment.simulate_training_outcomes(
-        train_x,
-        mu0_shape=mu0_shape,
-        treatment_effect_shape=treatment_effect_shape,
-        noise_sampler=noise_sampler,
-        propensity_shape=propensity_shape,
-        rng=rep_rng,
-    )
+    mu0_train = mu0_shape(train_x)
+    mu1_train = mu0_train + treatment_effect_shape(train_x)
+    e0, e1 = noise_sampler(train_x, rep_rng)
+    a_train = rep_rng.binomial(n=1, p=propensity_shape(train_x))
+    y_train = np.where(a_train == 1, mu1_train + e1, mu0_train + e0)
 
-    fitted_learners_last = {}
     for tag, make_learner in learners:
         fitted_learner = make_learner(rep_rng).fit(train_x, y_train, a_train)
-        bias_reps[tag].append([
-            experiment.evaluate(fitted_learner, test_x, mu0_shape=mu0_shape, treatment_effect_shape=treatment_effect_shape)[2]
-            for test_x in test_scenarios
-        ])
-        fitted_learners_last[tag] = fitted_learner
+        estimated_ate_reps[tag].append([fitted_learner.predict(test_x).mean() for test_x in test_scenarios])
 
-    train_x_last, train_a_last = train_x, a_train
+# actual ATE per scenario, approximated on the fixed test sample - overwrite with exact values when available
+actual_ate = np.array([treatment_effect_shape(test_x).mean() for test_x in test_scenarios])
 
-# CATE panel: true vs. predicted tau(x), evaluated at the last rep's training samples sorted by x0
-# (whole rows, so multidimensional units stay intact; the panel itself is only drawn for 1-D x)
-sample_x = train_x_last[np.argsort(train_x_last[:, 0])]
-cate_true = experiment.true_tau(sample_x, mu0_shape=mu0_shape, treatment_effect_shape=treatment_effect_shape)
-
-results_list = []
-for tag, _ in learners:
-    reps = np.array(bias_reps[tag])  # shape (N_REPS, len(test_scenarios))
-    bias_mean = reps.mean(axis=0)  # signed mean bias across reps
-    # 95% t-interval for the mean bias: reps are i.i.d. training draws against a fixed test sample
-    bias_ci_half = stats.t.ppf(0.975, df=N_REPS - 1) * reps.std(axis=0, ddof=1) / np.sqrt(N_REPS)
-    results_list.append({
+results_list = [
+    {
         "scenario_name": f"{run_tag}_{tag}",
         "label": tag,
         "test_distribution": test_dist.labels,
-        "bias": bias_mean,
-        "bias_ci_half": bias_ci_half,
-        "sample_x": sample_x,
-        "cate_true": cate_true,
-        "sample_pred": fitted_learners_last[tag].predict(sample_x),
-    })
-# training data is identical across learners (paired comparison), so only draw the rug once
-results_list[0]["train_x"] = train_x_last
-results_list[0]["train_a"] = train_a_last
+        "estimated_ate_reps": np.array(estimated_ate_reps[tag]),  # shape (N_REPS, len(test_scenarios))
+        "actual_ate": actual_ate,
+    }
+    for tag, _ in learners
+]
 
 # -----------------------------------------------------------------------------
 # 3. Save snapshot + plot to visualisation_output/<run_tag>/

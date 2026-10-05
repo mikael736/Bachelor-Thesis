@@ -15,11 +15,6 @@ def _check_1d(x: np.ndarray) -> np.ndarray:
     return x
 
 
-def get_assignment(e: np.ndarray, *, rng: np.random.Generator) -> np.ndarray:
-    """Draw a ~ Bernoulli(e(x)) given propensity scores e. Shared across every propensity score function below."""
-    return rng.binomial(n=1, p=e)
-
-
 # --- Propensity score functions: e(x) = P(A=1 | X=x) ---
 
 
@@ -33,3 +28,10 @@ def linear(x: np.ndarray) -> np.ndarray:
     """e(x) = x, clipped to [0.05, 0.95] so it is a valid probability even when x ranges outside it."""
     x = _check_1d(x)
     return np.clip(x, 0.05, 0.95)
+
+
+def sigmoid(x: np.ndarray, *, center: float, multiplier: float) -> np.ndarray:
+    """e(x) = 1 / (1 + exp(-multiplier * (x - center))): e(center) = 0.5, and a larger |multiplier| gives a
+    steeper transition (multiplier < 0 flips the direction). Clipped to [0.05, 0.95] to guarantee overlap."""
+    x = _check_1d(x)
+    return np.clip(1 / (1 + np.exp(-multiplier * (x - center))), 0.05, 0.95)
