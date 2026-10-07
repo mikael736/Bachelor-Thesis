@@ -20,9 +20,9 @@ import save_run
 # -----------------------------------------------------------------------------
 
 SEED = 42
-N_REPS = 50  # training/evaluation replications per learner and test scenario
+N_REPS = 350  # training/evaluation replications per learner and test scenario
 TRAIN_POPULATION_SIZE = 1000
-TEST_POPULATION_SIZE = 20_000  # per test-distribution sweep point
+TEST_POPULATION_SIZE = 100_000  # per test-distribution sweep point
 
 seed_seq = np.random.SeedSequence(SEED)
 rep_rngs = [np.random.default_rng(s) for s in seed_seq.spawn(N_REPS)]
@@ -38,10 +38,10 @@ population_tag = "beta5-5"
 train_covariates = lambda rng: covariates.beta(TRAIN_POPULATION_SIZE, a=5.0, b=5.0, rng=rng)
 
 # response surfaces: mu0(x) and tau(x) = mu1(x) - mu0(x)
-mu0_tag = "linear"
-mu0_shape = lambda x: response_surface.linear(x[:, 0], slope=50.0)
-mu1_tag = "mu0+linear"
-treatment_effect_shape = lambda x: response_surface.linear(x[:, 0], slope=50.0)
+mu0_tag = "sine"
+mu0_shape = lambda x: response_surface.sine(x[:, 0], amplitude=3.0, frequency=2.0)
+treatment_effect_tag = "linear"
+treatment_effect_shape = lambda x: response_surface.linear(x[:, 0], slope=7.0)
 
 # outcome noise
 noise_sampler = lambda x, rng: noise.homoskedastic_gaussian(x[:, 0], sd=1.0, rng=rng)
@@ -52,18 +52,18 @@ propensity_shape = lambda x: propensity.sigmoid(x[:, 0], center=0.5, multiplier=
 
 # CATE learners to fit and compare
 learners = [
-    ("XLearnerRF", lambda rng: cate_learners.XLearner(base_learner="rf", random_state=SEED)),
     ("TLearnerRF", lambda rng: cate_learners.TLearner(base_learner="rf", random_state=SEED)),
+    ("XLearnerRF", lambda rng: cate_learners.XLearner(base_learner="rf", random_state=SEED)),
     ("DRLearnerRF", lambda rng: cate_learners.DRLearner(base_learner="rf", random_state=SEED)),
 ]
 
 # test-distribution sweep, from covariates.TEST_DISTRIBUTIONS
-test_dist_name = "beta-shape-sweep1" 
+test_dist_name = "beta-shape-sweep" 
 test_dist = covariates.TEST_DISTRIBUTIONS[test_dist_name]
 
 # output dir name, composed from the *_tag values above - keep tags current when you edit them
 learner_tag = "-vs-".join(tag for tag, _ in learners)
-run_tag = f"{mu0_tag}_{mu1_tag}_{propensity_tag}"
+run_tag = f"experiment_4"
 
 # -----------------------------------------------------------------------------
 # 2. Evaluate each learner on each test scenario, over N_REPS replications. Each
@@ -76,15 +76,15 @@ test_scenarios = test_dist.covariates(TEST_POPULATION_SIZE, test_rng)
 estimated_ate_reps = {tag: [] for tag, _ in learners}
 for rep_num, rep_rng in enumerate(rep_rngs, start=1):
     print(f"Round {rep_num}/{N_REPS}")
-    train_x = train_covariates(rep_rng)
-    mu0_train = mu0_shape(train_x)
-    mu1_train = mu0_train + treatment_effect_shape(train_x)
-    e0, e1 = noise_sampler(train_x, rep_rng)
-    a_train = rep_rng.binomial(n=1, p=propensity_shape(train_x))
+    x_train = train_covariates(rep_rng)
+    mu0_train = mu0_shape(x_train)
+    mu1_train = mu0_train + treatment_effect_shape(x_train)
+    e0, e1 = noise_sampler(x_train, rep_rng)
+    a_train = rep_rng.binomial(n=1, p=propensity_shape(x_train))
     y_train = np.where(a_train == 1, mu1_train + e1, mu0_train + e0)
 
     for tag, make_learner in learners:
-        fitted_learner = make_learner(rep_rng).fit(train_x, y_train, a_train)
+        fitted_learner = make_learner(rep_rng).fit(x_train, y_train, a_train)
         estimated_ate_reps[tag].append([fitted_learner.predict(test_x).mean() for test_x in test_scenarios])
 
 # actual ATE per scenario, approximated on the fixed test sample - overwrite with exact values when available

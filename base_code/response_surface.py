@@ -40,6 +40,12 @@ def step(x: np.ndarray, *, jump: float = 1.0, threshold: float) -> np.ndarray:
     return jump * (x > threshold)
 
 
+def sine(x: np.ndarray, *, amplitude: float = 1.0, frequency: float = 1.0) -> np.ndarray:
+    """f(x) = amplitude * sin(2 * pi * frequency * x), i.e. `frequency` full periods per unit of x."""
+    x = _check_1d(x)
+    return amplitude * np.sin(2 * np.pi * frequency * x)
+
+
 def exponential(x: np.ndarray, *, scale: float = 1.0, multiplier: float = 1.0) -> np.ndarray:
     """f(x) = scale * exp(multiplier * x)."""
     x = _check_1d(x)
