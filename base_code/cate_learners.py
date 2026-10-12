@@ -7,11 +7,11 @@ from base_learners import get_classifier, get_regressor
 class TLearner:
     """T-learner."""
 
-    def __init__(self, base_learner: str = "rf", *, random_state: int):
+    def __init__(self, base_learner: str = "rf", *, regressor_params: dict | None = None, random_state: int):
         self.base_learner = base_learner
         self.name = f"TLearner[{base_learner}]"
-        self.mu0_model = get_regressor(base_learner, random_state=random_state)
-        self.mu1_model = get_regressor(base_learner, random_state=random_state)
+        self.mu0_model = get_regressor(base_learner, random_state=random_state, rf_params=regressor_params)
+        self.mu1_model = get_regressor(base_learner, random_state=random_state, rf_params=regressor_params)
 
     def fit(self, x, y, a):
         x, y, a = np.asarray(x), np.asarray(y), np.asarray(a)
@@ -33,6 +33,8 @@ class XLearner:
         mu0_learner: str | None = None,
         propensity_learner: str = "rf",
         *,
+        regressor_params: dict | None = None,
+        classifier_params: dict | None = None,
         random_state: int,
     ):
         """mu0_learner overrides base_learner just for mu0; defaults to base_learner."""
@@ -41,11 +43,12 @@ class XLearner:
         self.mu0_learner = mu0_learner
         self.propensity_learner = propensity_learner
         self.name = f"XLearner[{base_learner}, mu0={mu0_learner}]"
-        self.mu0_model = get_regressor(mu0_learner, random_state=random_state)
-        self.mu1_model = get_regressor(base_learner, random_state=random_state)
-        self.tau0_model = get_regressor(base_learner, random_state=random_state)
-        self.tau1_model = get_regressor(base_learner, random_state=random_state)
-        self.propensity_model = get_classifier(propensity_learner, random_state=random_state)
+        reg = dict(random_state=random_state, rf_params=regressor_params)
+        self.mu0_model = get_regressor(mu0_learner, **reg)
+        self.mu1_model = get_regressor(base_learner, **reg)
+        self.tau0_model = get_regressor(base_learner, **reg)
+        self.tau1_model = get_regressor(base_learner, **reg)
+        self.propensity_model = get_classifier(propensity_learner, random_state=random_state, rf_params=classifier_params)
 
     def fit(self, x, y, a):
         x, y, a = np.asarray(x), np.asarray(y), np.asarray(a)
@@ -90,6 +93,8 @@ class DRLearner:
         cross_fit: bool = False,
         n_folds: int = 5,
         propensity_clip: float = 0.05,
+        regressor_params: dict | None = None,
+        classifier_params: dict | None = None,
         random_state: int,
     ):
         self.base_learner = base_learner
@@ -97,15 +102,20 @@ class DRLearner:
         self.cross_fit = cross_fit
         self.n_folds = n_folds
         self.propensity_clip = propensity_clip
+        self.regressor_params = regressor_params
+        self.classifier_params = classifier_params
         self.random_state = random_state
         self.name = f"DRLearner[{base_learner}]" if cross_fit else f"DRLearner[{base_learner}, no cross-fit]"
-        self.tau_model = get_regressor(base_learner, random_state=random_state)
+        self.tau_model = get_regressor(base_learner, random_state=random_state, rf_params=regressor_params)
 
     def _fit_nuisances(self, x, y, a):
         """Fresh mu0, mu1 (as in T-learner) and propensity e (as in X-learner) fitted on (x, y, a)."""
-        mu0 = get_regressor(self.base_learner, random_state=self.random_state).fit(x[a == 0], y[a == 0])
-        mu1 = get_regressor(self.base_learner, random_state=self.random_state).fit(x[a == 1], y[a == 1])
-        e = get_classifier(self.propensity_learner, random_state=self.random_state).fit(x, a)
+        reg = dict(random_state=self.random_state, rf_params=self.regressor_params)
+        mu0 = get_regressor(self.base_learner, **reg).fit(x[a == 0], y[a == 0])
+        mu1 = get_regressor(self.base_learner, **reg).fit(x[a == 1], y[a == 1])
+        e = get_classifier(
+            self.propensity_learner, random_state=self.random_state, rf_params=self.classifier_params
+        ).fit(x, a)
         return mu0, mu1, e
 
     def _pseudo_outcome(self, nuisances, x, y, a):

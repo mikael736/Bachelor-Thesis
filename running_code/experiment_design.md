@@ -31,6 +31,10 @@ Each setting with a short justification, phrased so it can go into the thesis.
   leaves flatten the fit; in end-to-end comparisons (5/5, 5/10, 20/80, classifier 10 vs. 50),
   smaller leaves won clearly in curved settings and lost only slightly in flat ones. 5 is also the
   standard regression default (Breiman; R `randomForest`; `grf`).
+- **Random forests: `max_features` = p/3 for the regressors, sqrt(p) for the classifier.** The
+  standard defaults (Breiman 2001; Liaw & Wiener 2002, R `randomForest`), also the values tuned for
+  IST. For d <= 3 both round down to one covariate per split, so they have no effect in the 1-D
+  main experiments and coincide in the 3-D appendix experiments.
 - **Replications: N_REPS = 350 for the thesis runs (50 during development).** Each MSE is an
   average over replications and so carries Monte Carlo error. Pilot runs (50 reps) on a hard (sine
   mu0) and an easy (constant) setting showed that about 340-360 reps bound the relative Monte
@@ -118,11 +122,73 @@ realistic regime goes into the appendix as a robustness check.
 - **Low-signal regime:** sd(tau) / sigma ~ 0.2-0.3 for E2 or E4 - does the learner ranking hold?
 - **Overlap:** sigmoid multiplier 2 vs. 5 vs. 10.
 - **DR-learner with vs. without cross-fitting:** one ablation plot.
-- **Training size:** n in {500, 1000, 2000, 5000} for one or two experiments. If the errors at the
+- **Training size:** n in {100, 500, 1000, 2000, 5000} for one or two experiments. If the errors at the
   ends of the sweep barely shrink with n, they come from extrapolation, not from small samples.
 - **3-D covariates** (`covariates.coordinatewise_3d`: x1 = x0^2, x2 independent; 0-based coordinates): repeat one or
   two main experiments (e.g. E1 and E4) with mu0 / tau depending on x0 only. Questions: do
   correlated or irrelevant covariates hurt the learners, and does `max_features` matter then?
+
+## IST real-data experiment
+
+Complements the synthetic experiments with real data; separate from the CI work.
+
+**Question.** Learn the aspirin effect from all other countries and transport it to a held-out
+country by averaging each meta-learner's CATE predictions over that country's covariates
+(plug-in estimate); compare with the country's own randomized estimate.
+
+**Data.** International Stroke Trial database, version 2 (`IST_corrected.csv`; Sandercock et al.
+2011, Trials 12:101). 19,435 patients in 36 countries, randomized to aspirin vs. no aspirin
+(factorial with heparin). Loaded and prepared by `base_code/ist_data.py`. The unchanged file, the
+codebook and the licence (ODC-By, redistribution allowed with attribution) are in `data/ist/`, with
+the source's SHA-256 checksum in `data/ist/README.md`, so the exact version used is pinned.
+
+**Preparation** (for the thesis):
+- Treatment A: `RXASP` (Y -> 1, N -> 0), the randomized allocation. All heparin groups are kept, so
+  the effect is averaged over the trial's heparin regimen; no filtering on adherence or diagnosis.
+- Outcome Y: death or dependency at six months, the trial's primary outcome. `OCCODE` 1 (dead) and
+  2 (dependent) -> 1; 3 (not recovered) and 4 (recovered) -> 0; 0, 8, 9 and blank -> missing
+  (150 patients, 0.8%; code 0 is not in the codebook and treated as missing). The ATE is a risk
+  difference; negative values favour aspirin.
+- Covariates X: 16 baseline variables, chosen a priori from the codebook, not from all columns:
+  numeric `AGE`, `RSBP` (systolic blood pressure), `RDELAY` (hours from stroke to randomization);
+  categorical `SEX`, `RCONSC` (consciousness), `RATRIAL` (atrial fibrillation), `RASP3` (aspirin in
+  the previous 3 days), `RDEF1`-`RDEF8` (neurological deficits), `STYPE` (stroke subtype).
+  Excluded: identifiers, dates, post-randomization variables and supplied risk scores.
+- Encoding: categorical variables one-hot encoded over their codebook levels (43 columns in
+  total, 3 numeric + 40 indicators). "C" (cannot assess) and "U" (unconscious) are regular levels.
+- Missing covariates: only `RATRIAL` and `RASP3` (984 pilot patients, not recorded); kept as their
+  own "missing" level. The numeric covariates have no missing values, so nothing is imputed. The
+  preparation has no fitted parameters (fixed codebook levels, no imputation model), so it cannot
+  leak target information.
+- Missing outcomes: patients with missing Y (150, 0.8%) are excluded everywhere (complete-case
+  analysis, in the loader), so the transported estimate and the benchmark refer to the same target
+  patients. Only 5 are in a target country (UK); Italy and Switzerland have none. Assumes the
+  missingness is non-informative.
+- Coding check: pooled six-month rates 62.2% (aspirin) vs. 63.5% (no aspirin), risk difference
+  -1.3 percentage points, matching the published trial report (IST Collaborative Group 1997).
+
+**Design.**
+- Targets: the three largest countries by enrolment, chosen by counts only: UK (6257 enrolled,
+  6252 with outcome), Italy (3437), Switzerland (1631). Each is held out in turn; all other countries form the source.
+- Learners: T-, X- and DR-learner with random forests, fit on the source only. Target outcomes
+  are not used until the estimates are fixed.
+- Benchmark: the target country's randomized estimate, the risk difference p1 - p0 (share dead or
+  dependent, aspirin minus control), with Wald 95% CI p1 - p0 +- 1.96 sqrt(p1(1-p1)/n1 + p0(1-p0)/n0).
+  Reported in percentage points (x 100).
+- Precision: the benchmark's 95% interval is +-2.0 pp (UK; outcome rate 79%), +-3.3 pp (Italy;
+  57%) and +-4.6 pp (Switzerland; 67%), larger than the pooled effect (-1.3 pp). The experiment can therefore
+  show whether transported estimates are consistent with the randomized ones, not rank the
+  learners. The three analyses share data and are not independent replications.
+- Random forests: with 43 columns `max_features` matters (defaults: sklearn regressor 1.0,
+  classifier sqrt(p); Breiman p/3; grf ~ sqrt(p) + 20). Tuned by `ist_tune_rf.py` on the 33
+  never-target countries only (7965 patients with outcome; source data for all three targets): grid
+  `max_features` in {sqrt(p), 1/3, 0.5, 1.0} x `min_samples_leaf` in {5, 20, 50, 100}, 100 trees,
+  out-of-bag Brier score.
+  - Regressors (mu0, mu1): minimize the sum of both Brier scores -> `max_features=1/3`,
+    `min_samples_leaf=20` (0.1928 + 0.1888; top settings within 0.0005, so the choice hardly matters).
+  - Classifier (e): Brier ~ 0.25 = 0.5 * 0.5 in every setting, i.e. treatment is unpredictable
+    from X (randomization); the most smoothing adds the least noise -> `max_features="sqrt"`,
+    `min_samples_leaf=100`.
 
 ## Monte Carlo error analysis (material for the appendix)
 

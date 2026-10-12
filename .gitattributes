@@ -1,0 +1,2 @@
+# keep the data files byte-identical to the source (no line-ending conversion), so the checksum holds
+data/** -text

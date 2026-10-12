@@ -23,6 +23,10 @@ SEED = 42
 N_REPS = 350  # training/evaluation replications per learner and test scenario
 TRAIN_POPULATION_SIZE = 1000
 TEST_POPULATION_SIZE = 100_000  # per test-distribution sweep point
+# random-forest settings (leaf size 5 chosen under covariate shift; max_features: standard p/3 for
+# regression and sqrt(p) for classification, no effect in 1-D - see experiment_design.md)
+REGRESSOR_PARAMS = dict(max_features=1 / 3, min_samples_leaf=5)
+CLASSIFIER_PARAMS = dict(max_features="sqrt", min_samples_leaf=5)
 
 seed_seq = np.random.SeedSequence(SEED)
 rep_rngs = [np.random.default_rng(s) for s in seed_seq.spawn(N_REPS)]
@@ -51,10 +55,11 @@ propensity_tag = "sigmoid"
 propensity_shape = lambda x: propensity.sigmoid(x[:, 0], center=0.5, multiplier=5.0)
 
 # CATE learners to fit and compare
+rf = dict(base_learner="rf", regressor_params=REGRESSOR_PARAMS, random_state=SEED)
 learners = [
-    ("TLearnerRF", lambda rng: cate_learners.TLearner(base_learner="rf", random_state=SEED)),
-    ("XLearnerRF", lambda rng: cate_learners.XLearner(base_learner="rf", random_state=SEED)),
-    ("DRLearnerRF", lambda rng: cate_learners.DRLearner(base_learner="rf", random_state=SEED)),
+    ("TLearnerRF", lambda rng: cate_learners.TLearner(**rf)),
+    ("XLearnerRF", lambda rng: cate_learners.XLearner(classifier_params=CLASSIFIER_PARAMS, **rf)),
+    ("DRLearnerRF", lambda rng: cate_learners.DRLearner(classifier_params=CLASSIFIER_PARAMS, **rf)),
 ]
 
 # test-distribution sweep, from covariates.TEST_DISTRIBUTIONS
