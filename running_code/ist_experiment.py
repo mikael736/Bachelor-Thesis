@@ -30,9 +30,9 @@ CLASSIFIER_PARAMS = dict(max_features="sqrt", min_samples_leaf=100)
 
 rf = dict(base_learner="rf", regressor_params=REGRESSOR_PARAMS, random_state=SEED)
 learners = [
-    ("TLearnerRF", lambda: cate_learners.TLearner(**rf)),
-    ("XLearnerRF", lambda: cate_learners.XLearner(classifier_params=CLASSIFIER_PARAMS, **rf)),
-    ("DRLearnerRF", lambda: cate_learners.DRLearner(classifier_params=CLASSIFIER_PARAMS, **rf)),
+    ("T-learner", lambda: cate_learners.TLearner(**rf)),
+    ("X-learner", lambda: cate_learners.XLearner(classifier_params=CLASSIFIER_PARAMS, **rf)),
+    ("DR-learner", lambda: cate_learners.DRLearner(classifier_params=CLASSIFIER_PARAMS, **rf)),
 ]
 run_tag = "ist_experiment"
 

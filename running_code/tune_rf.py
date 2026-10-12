@@ -1,6 +1,6 @@
 """Compare random-forest min_samples_leaf values by out-of-bag (OOB) error of the nuisance models
 mu0, mu1 (regressors, per arm) and e (classifier), on the same data-generating process as
-current_experiment.py. Reports OOB error against the observed y / a and, since the data is
+metalearner_experiment.py. Reports OOB error against the observed y / a and, since the data is
 simulated, against the true mu0, mu1, e (no noise floor).
 """
 import sys
@@ -21,7 +21,7 @@ N_REPS = 20
 TRAIN_POPULATION_SIZE = 1000
 LEAF_SIZES = [1, 2, 5, 10, 20, 50, 100]
 
-# data-generating process - keep in sync with current_experiment.py
+# data-generating process - keep in sync with metalearner_experiment.py
 train_covariates = lambda rng: covariates.beta(TRAIN_POPULATION_SIZE, a=5.0, b=5.0, rng=rng)
 mu0_shape = lambda x: response_surface.sine(x[:, 0], amplitude=3.0, frequency=2.0)
 treatment_effect_shape = lambda x: response_surface.constant(x[:, 0], value=2.0)

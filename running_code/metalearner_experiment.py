@@ -20,9 +20,10 @@ import save_run
 # -----------------------------------------------------------------------------
 
 SEED = 42
-N_REPS = 350  # training/evaluation replications per learner and test scenario
+N_REPS = 100  # training/evaluation replications per learner and test scenario
 TRAIN_POPULATION_SIZE = 1000
 TEST_POPULATION_SIZE = 100_000  # per test-distribution sweep point
+ACTUAL_ATE_SAMPLE_SIZE = 1_000_000  # per sweep point; actual ATE for multidimensional sweeps (exact in 1-D)
 # random-forest settings (leaf size 5 chosen under covariate shift; max_features: standard p/3 for
 # regression and sqrt(p) for classification, no effect in 1-D - see experiment_design.md)
 REGRESSOR_PARAMS = dict(max_features=1 / 3, min_samples_leaf=5)
@@ -32,6 +33,8 @@ seed_seq = np.random.SeedSequence(SEED)
 rep_rngs = [np.random.default_rng(s) for s in seed_seq.spawn(N_REPS)]
 # fixed target sample, drawn once and reused across all reps
 test_rng = np.random.default_rng(SEED)
+# separate stream for the actual-ATE sample, independent of the training and test samples
+ate_rng = np.random.default_rng(seed_seq.spawn(1)[0])
 
 # -----------------------------------------------------------------------------
 # 1. Training setup (edit per experiment)
@@ -46,6 +49,8 @@ mu0_tag = "sine"
 mu0_shape = lambda x: response_surface.sine(x[:, 0], amplitude=3.0, frequency=2.0)
 treatment_effect_tag = "linear"
 treatment_effect_shape = lambda x: response_surface.linear(x[:, 0], slope=7.0)
+# jump locations of tau (e.g. [0.7] for a step), so the exact 1-D integral handles them; [] if continuous
+treatment_effect_breakpoints = []
 
 # outcome noise
 noise_sampler = lambda x, rng: noise.homoskedastic_gaussian(x[:, 0], sd=1.0, rng=rng)
@@ -57,9 +62,9 @@ propensity_shape = lambda x: propensity.sigmoid(x[:, 0], center=0.5, multiplier=
 # CATE learners to fit and compare
 rf = dict(base_learner="rf", regressor_params=REGRESSOR_PARAMS, random_state=SEED)
 learners = [
-    ("TLearnerRF", lambda rng: cate_learners.TLearner(**rf)),
-    ("XLearnerRF", lambda rng: cate_learners.XLearner(classifier_params=CLASSIFIER_PARAMS, **rf)),
-    ("DRLearnerRF", lambda rng: cate_learners.DRLearner(classifier_params=CLASSIFIER_PARAMS, **rf)),
+    ("T-learner", lambda rng: cate_learners.TLearner(**rf)),
+    ("X-learner", lambda rng: cate_learners.XLearner(classifier_params=CLASSIFIER_PARAMS, **rf)),
+    ("DR-learner", lambda rng: cate_learners.DRLearner(classifier_params=CLASSIFIER_PARAMS, **rf)),
 ]
 
 # test-distribution sweep, from covariates.TEST_DISTRIBUTIONS
@@ -92,14 +97,25 @@ for rep_num, rep_rng in enumerate(rep_rngs, start=1):
         fitted_learner = make_learner(rep_rng).fit(x_train, y_train, a_train)
         estimated_ate_reps[tag].append([fitted_learner.predict(test_x).mean() for test_x in test_scenarios])
 
-# actual ATE per scenario, approximated on the fixed test sample - overwrite with exact values when available
-actual_ate = np.array([treatment_effect_shape(test_x).mean() for test_x in test_scenarios])
+# actual ATE per scenario: exact in 1-D (numerical integration of tau against the test density; tau
+# takes an (n, d) matrix, so the scalar x is wrapped as (1, 1)); otherwise a Monte Carlo average on a
+# large independent sample, error SD = sd_t(tau) / sqrt(ACTUAL_ATE_SAMPLE_SIZE) - see experiment_design.md
+if test_dist.distributions is not None:
+    actual_ate = np.array([
+        dist.expect(lambda x: treatment_effect_shape(np.array([[x]]))[0], points=treatment_effect_breakpoints or None)
+        for dist in test_dist.distributions
+    ])
+else:
+    actual_ate = np.array([
+        treatment_effect_shape(ate_x).mean() for ate_x in test_dist.covariates(ACTUAL_ATE_SAMPLE_SIZE, ate_rng)
+    ])
 
 results_list = [
     {
         "scenario_name": f"{run_tag}_{tag}",
         "label": tag,
-        "test_distribution": test_dist.labels,
+        "test_distribution": test_dist.tick_labels,
+        "axis_label": test_dist.axis_label,
         "estimated_ate_reps": np.array(estimated_ate_reps[tag]),  # shape (N_REPS, len(test_scenarios))
         "actual_ate": actual_ate,
     }

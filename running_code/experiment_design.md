@@ -19,12 +19,30 @@ Each setting with a short justification, phrased so it can go into the thesis.
   the phenomenon under study. n = 1000 is also a common scale in CATE simulation studies.
 - **Test populations: the Beta shape sweep Beta(a, 10 - a), a = 2, 3, ..., 8 (test mean 0.2 to
   0.8; covariate shift into the tails, Beta(5, 5) = training in the middle), 100,000 units per
-  sweep point, drawn once.** The actual ATE is computed exactly; the test sample only approximates
-  the learner's estimated ATE, E_test[tau_hat(X)], by Monte Carlo integration. Its effect on the
-  reported MSE is at most a few percent at the ends of the sweep and at most ~10% at its centre,
-  where all MSEs are smallest (derivation in "Monte Carlo error analysis", part B). Since the sample
-  is drawn once, more replications would not reduce this error, hence the large size. It is not
-  meant to mimic a real sample size.
+  sweep point, drawn once.** The test sample approximates the learner's estimated ATE,
+  E_test[tau_hat(X)], by Monte Carlo integration. Its effect on the reported MSE is at most a few
+  percent at the ends of the sweep and at most ~10% at its centre, where all MSEs are smallest
+  (derivation in "Monte Carlo error analysis", part B). Since the sample is drawn once, more
+  replications would not reduce this error, hence the large size. It is not meant to mimic a real
+  sample size.
+- **Actual ATE: exact in 1-D** (all main experiments), as requested by the supervisor: numerical
+  integration of tau against the test density (`scipy.stats` `expect`, i.e. adaptive quadrature),
+  with the step's jump location passed to the integrator (`treatment_effect_breakpoints`).
+  Checked: error ~1e-15 against the analytic values 7 a / 10 (linear tau) and 3 P(X > 0.7) (step);
+  the sine agrees with a 1,000,000-point Monte Carlo average within Monte Carlo error. The actual
+  ATE therefore adds no error to the reported MSE or to the CI coverage.
+- **Multidimensional sweeps (3-D appendix): Monte Carlo fallback**, average of tau over a separate
+  sample of 1,000,000 units per sweep point (`ACTUAL_ATE_SAMPLE_SIZE`), drawn from its own random
+  stream (independent of training and test samples). Not exact: error SD = sd_test(tau) / 1000,
+  ~0.001 for Var_test(tau) <~ 1 (SNR scaling), i.e. <= 3% of the MSE at the centre of the sweep,
+  <= 0.6% at the ends (part B, step 8), and negligible against CI half-widths of ~0.1.
+  - Revisit if tau changes. The error depends only on Var_test(tau), not on the shape of tau
+    (a step is no harder than a line). Scaling tau by c scales the error SD by c; the relative effect
+    on the MSE is ~ 2 sqrt(q'), q' = Var_test(tau) / (M' * MSE), so it grows if Var_test(tau)
+    increases or the MSE becomes smaller. Keep q' <~ 2.5e-4 (2 sqrt(q') <~ 3%), i.e.
+    M' >= Var_test(tau) / (2.5e-4 * MSE_min); with sd(tau) = 0.84 the 1,000,000 points suffice for
+    MSE_min down to ~0.003. Otherwise increase `ACTUAL_ATE_SAMPLE_SIZE` (memory: 8 bytes per point
+    and coordinate per sweep point).
 - **Random forests: `min_samples_leaf = 5` for the regressors and the propensity classifier.**
   Larger leaves (e.g. 20 / 80) minimize the out-of-bag error, but that error is weighted by the
   training distribution. Under covariate shift the test mass sits in the sparse tails, where large
@@ -35,7 +53,9 @@ Each setting with a short justification, phrased so it can go into the thesis.
   standard defaults (Breiman 2001; Liaw & Wiener 2002, R `randomForest`), also the values tuned for
   IST. For d <= 3 both round down to one covariate per split, so they have no effect in the 1-D
   main experiments and coincide in the 3-D appendix experiments.
-- **Replications: N_REPS = 350 for the thesis runs (50 during development).** Each MSE is an
+- **Replications: N_REPS = 100 for now (running time).** Relative Monte Carlo standard error of
+  each MSE = CV / sqrt(R): <= 14% under normal errors, ~18% at the pilot's worst point (part A).
+  Planned before (kept for reference): N_REPS = 350 for the thesis runs. Each MSE is an
   average over replications and so carries Monte Carlo error. Pilot runs (50 reps) on a hard (sine
   mu0) and an easy (constant) setting showed that about 340-360 reps bound the relative Monte
   Carlo standard error of every reported MSE at about 10% (derivation in "Monte Carlo error
@@ -103,6 +123,51 @@ At heterogeneity that weak (sd(tau) / sigma ~ 0.1) and n = 1000, tau(x) is barel
 actual ATE hardly moves across the sweep, and all learners look alike - the covariate-shift
 mechanism under study would not be visible. SNR ~ 1 is a design choice that makes it visible; the
 realistic regime goes into the appendix as a robustness check.
+
+## ATE-estimator comparison (second chapter): plain average vs. AIPW-corrected
+
+Estimating the ATE from a CATE learner has two steps: learn the CATE, then aggregate it over the
+target. The meta-learner comparison (`metalearner_experiment.py`) varies the first step (T, X, DR)
+with the plain average fixed; this chapter fixes the T-learner and varies the second step.
+Agreed with the supervisor: CI for the T-learner only.
+
+- Script `ate_estimator_experiment.py`, estimators in `base_code/ate_estimators.py`; method from the
+  note `ate_CI.pdf` (Zeng, Kennedy et al. 2024, Sec. 4.2): cross-fitted T-learner, K = 5 folds.
+- Compared: plain average t_bar of the cross-fitted CATE predictions over the target (naive CI
+  t_bar +- 1.96 s_t / sqrt(m), target sampling only) vs. AIPW-corrected t_bar + q_bar (CI from the
+  note). Both use the same cross-fitted predictions, so they differ only by the correction.
+- Every rep draws new source (n = 1000) and target samples (m = 1000 per sweep point; m = 5000
+  as an appendix sensitivity check): the CI covers
+  the population ATE under repeated sampling of both (note, Sec. 6). Same DGPs (E1-E4), sweep and
+  exact actual ATE as the meta-learner comparison; N_REPS = 100.
+- Density ratio from a source-vs-target forest, capped at 20 (share of capped units recorded);
+  propensity clipped to [0.05, 0.95]. The cap is set on r_hat itself, not as a floor on
+  P(source | x): a floor c caps r_hat at (n / m)(1 - c) / c, which changes with m (c = 0.05: 19 at
+  m = n, 3.8 at m = 5000), so the appendix run with a larger target would truncate differently.
+  20 = 1 / 0.05, i.e. the same bound as the propensity clip; at m = n it equals a floor of 0.05.
+- Output: `plot.png` (actual vs. mean estimate, MSE), `ci_plot.png` (coverage with Monte Carlo
+  band, mean CI width), `summary.csv` (all numbers per estimator and sweep point).
+- Forests: outcome forests (leaf 5) and propensity forest (leaf 5) as in the meta-learner
+  comparison, for consistency. The source-vs-target forest gets its own setting, leaf 100
+  (`DENSITY_RATIO_PARAMS`):
+  - Why separate: a different task - it estimates a smooth ratio of two densities, and its output
+    is divided by (r = (n / m)(1 - rho) / rho), so poorly calibrated probabilities blow up the
+    weights. In a first smoke test with leaf 5 (m = 5000), r_hat was worse than assuming no shift
+    (error 6.7 where r = 1), ~10% of units hit the bound and the CI was ~4.7 wide where ~0.4 is
+    expected.
+  - Rule: OOB Brier score on the pooled source + target sample (n = m = 1000), grid
+    {5, 10, 20, 50, 100, 200}, 20 seeds, all 7 sweep points (`tune_probability_forests.py`); same
+    rule as for IST. The forest is validated on the pooled sample, so the target region is included
+    (unlike an OOB error over the source alone).
+  - Result (mean over the sweep): OOB Brier 0.2032 (leaf 5), 0.1842 (20), 0.1793 (50), 0.1776
+    (100, best), 0.1777 (200). Per sweep point, leaf 100 is best at the 4 outer points and 200 at
+    the 3 central ones (differences in the 4th decimal); leaf 5 is worst everywhere.
+  - Validation against the truth (simulation only) agrees: RMSE vs. true rho 0.160 (leaf 5) ->
+    0.040 (100); RMSE of the capped r_hat at the source points 2.56 -> 0.48; capped share 1.8% ->
+    0.4%.
+  - Not applied to the propensity forest: there the same check (OOB over the source only) also
+    favours leaf 100, but in chapter B e_hat enters the correction weighted by r, i.e. mostly in the
+    source tails, where leaf 5 did better in the meta-learner comparison; kept at leaf 5.
 
 ## Why 1-D covariates in the main part
 
@@ -196,7 +261,8 @@ Two independent sources of Monte Carlo error enter every reported MSE: the finit
 replications R (part A) and the finite test sample of size M used to integrate the estimated ATE
 (part B). Notation for one learner and one test distribution P:
 
-- theta = E_P[tau(X)]: actual ATE, computed exactly.
+- theta = E_P[tau(X)]: actual ATE, exact in 1-D (numerical integration). Step 8 adds the error of
+  the Monte Carlo fallback used for multidimensional sweeps (separate sample of M' = 1,000,000).
 - Replication r = 1..R: training data D_r (independent seeds) -> fitted CATE tau_hat_r.
 - theta_hat_r = E_P[tau_hat_r(X)]: estimated ATE with exact integration; error e_r = theta_hat_r - theta.
 - MSE = E[e^2] (target); MSE_hat = (1/R) sum_r e_r^2 (what part A analyses).
@@ -260,14 +326,26 @@ MSE_tilde = (1/R) sum_r (theta_tilde_r - theta)^2.
      replications; only M controls it.
    - All learners share S, so their fluctuations are correlated and partly cancel in comparisons.
    - It is largest where it matters least: at the centre of the sweep, where all MSEs are smallest.
+8. Multidimensional sweeps only (in 1-D theta is exact and this step does not apply).
+   Actual ATE from a separate sample S' of M' = 1,000,000 draws from P, independent of S and all
+   D_r: theta_tilde = theta + epsilon, E[epsilon] = 0, sd(epsilon) = sd_P(tau) / sqrt(M'). The
+   reported error per rep becomes e_r + delta_r - epsilon, so MSE_tilde gains
+   -2 epsilon * b_hat + epsilon^2, with b_hat = (1/R) sum_r (e_r + delta_r) the mean error (bias).
+   Since |b_hat| <= sqrt(MSE), the relative effect is again <~ q' + 2 sqrt(q'), now with
+   q' = Var_P(tau) / (M' * MSE). With Var_P(tau) <~ 1 (SNR scaling): centre of the sweep
+   (MSE ~ 0.004) q' ~ 2.5e-4, 2 sqrt(q') ~ 3%; ends (MSE 0.1-1) <= 0.6%. Like delta, epsilon is
+   the same in every rep (does not average out) and shared by all learners.
 
 Draft appendix text:
 
-> The actual ATE theta = E_P[tau(X)] is computed exactly. Each estimated ATE E_P[tau_hat(X)] is
-> approximated by Monte Carlo integration over a fixed sample of M = 100,000 draws from P,
-> independent of the training data. The integration error delta has conditional mean zero and
-> variance Var_P(tau_hat(X)) / M. It inflates the reported MSE by v_bar / M on average and adds a
-> mean-zero fluctuation with standard deviation at most 2 sqrt(MSE * v_bar / M), i.e. at most
-> q + 2 sqrt(q) relative to the MSE, with q = v_bar / (M * MSE). In our settings this is at most
-> about 2% at the ends of the covariate-shift sweep and about 10% at its centre, where all MSEs
-> are smallest.
+> The actual ATE theta = E_P[tau(X)] is computed exactly by numerical integration against the
+> test density. Each estimated ATE E_P[tau_hat(X)] is approximated by Monte Carlo integration over
+> a fixed sample of M = 100,000 draws from P, independent of the training data. The integration
+> error delta has conditional mean zero and variance Var_P(tau_hat(X)) / M. It inflates the
+> reported MSE by v_bar / M on average and adds a mean-zero fluctuation with standard deviation at
+> most 2 sqrt(MSE * v_bar / M), i.e. at most q + 2 sqrt(q) relative to the MSE, with
+> q = v_bar / (M * MSE). In our settings this is at most about 2% at the ends of the
+> covariate-shift sweep and about 10% at its centre, where all MSEs are smallest.
+> [3-D appendix: the actual ATE is a Monte Carlo average over a separate sample of
+> M' = 1,000,000 draws, contributing at most q' + 2 sqrt(q') in the same way, with
+> q' = Var_P(tau) / (M' * MSE).]

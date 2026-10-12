@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 import numpy as np
+from scipy import stats
 
 
 def normal(n: int, *, mean: float, sd: float, rng: np.random.Generator) -> np.ndarray:
@@ -40,40 +41,53 @@ def coordinatewise_3d(n: int, *, a: float, b: float, rng: np.random.Generator) -
 
 @dataclass(frozen=True)
 class TestDistribution:
-    """One named sweep of test populations. labels is its plot-facing description, one string per
-    sweep point. covariates(n, rng) draws a fresh sample of n units for every sweep point and
-    returns them as a list, in the same order as labels.
+    """One named sweep of test populations. labels names each sweep point in full (tables).
+    covariates(n, rng) draws a fresh sample of n units for every sweep point and returns them as a
+    list, in the same order as labels. distributions (1-D sweeps only) holds the scipy distribution
+    of each sweep point, for exact expectations; None for multidimensional sweeps. For plots,
+    tick_labels are short per-point labels and axis_label names the family on the axis.
     """
 
     labels: list[str]
     covariates: Callable[[int, np.random.Generator], list[np.ndarray]]
+    tick_labels: list[str]
+    axis_label: str
+    distributions: list | None = None
 
 
 _normal_mean_sweep_means = np.linspace(-1.0, 1.0, 5)
 NORMAL_MEAN_SWEEP = TestDistribution(
-    labels=[f"N({mean:.1f},1.0)" for mean in _normal_mean_sweep_means],
+    labels=[f"N({mean:g},1)" for mean in _normal_mean_sweep_means],
     covariates=lambda n, rng: [
         normal(n, mean=mean, sd=1.0, rng=rng) for mean in _normal_mean_sweep_means
     ],
+    tick_labels=[f"{mean:g}" for mean in _normal_mean_sweep_means],
+    axis_label="Target distribution N(mean, 1): mean",
+    distributions=[stats.norm(loc=mean, scale=1.0) for mean in _normal_mean_sweep_means],
 )
 
 
 _beta_shape_sweep_a = np.linspace(2, 8, 7)
 _beta_shape_sweep_params = [(a, 10.0 - a) for a in _beta_shape_sweep_a]
 BETA_SHAPE_SWEEP = TestDistribution(
-    labels=[f"Beta({a:.1f},{b:.1f})" for a, b in _beta_shape_sweep_params],
+    labels=[f"Beta({a:g},{b:g})" for a, b in _beta_shape_sweep_params],
     covariates=lambda n, rng: [
         beta(n, a=a, b=b, rng=rng) for a, b in _beta_shape_sweep_params
     ],
+    tick_labels=[f"({a:g},{b:g})" for a, b in _beta_shape_sweep_params],
+    axis_label="Target distribution Beta(a, b)",
+    distributions=[stats.beta(a, b) for a, b in _beta_shape_sweep_params],
 )
 
 
 # same (a, b) sweep as BETA_SHAPE_SWEEP, but on coordinatewise_3d: only x0 (and hence x1) shifts, x2 stays fixed
 COORDINATEWISE_3D_SHAPE_SWEEP = TestDistribution(
-    labels=[f"x0~Beta({a:.1f},{b:.1f})" for a, b in _beta_shape_sweep_params],
+    labels=[f"x0~Beta({a:g},{b:g})" for a, b in _beta_shape_sweep_params],
     covariates=lambda n, rng: [
         coordinatewise_3d(n, a=a, b=b, rng=rng) for a, b in _beta_shape_sweep_params
     ],
+    tick_labels=[f"({a:g},{b:g})" for a, b in _beta_shape_sweep_params],
+    axis_label="Target distribution of $x_0$: Beta(a, b)",
 )
 
 
