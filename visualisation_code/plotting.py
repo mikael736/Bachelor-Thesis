@@ -9,7 +9,10 @@ estimates), panel (a) also shades its mean 95% CI.
 plot_coverage: ATE-estimator experiment - 95% CI coverage (a) and mean CI width (b).
 
 plot_ist: IST real-data experiment - transported estimates vs. each target country's randomized estimate.
+
+plot_ist_ci: IST real-data experiment - plug-in and AIPW-corrected estimates with their 95% CIs.
 """
+import warnings
 from pathlib import Path
 
 import matplotlib
@@ -77,7 +80,22 @@ def _style(i):
     return dict(color=OKABE_ITO[i % len(OKABE_ITO)], marker=MARKERS[i % len(MARKERS)])
 
 
-def plot_experiment(results_list, save_path):
+def _fixed_ylim(ax, values, ylim, name):
+    """Set a fixed y-range (shared across experiments, for comparability) and warn about values outside
+    it, so that no point is cut off silently. ylim None keeps matplotlib's automatic range."""
+    if ylim is None:
+        return
+    values = np.asarray(values)
+    outside = values[(values < ylim[0]) | (values > ylim[1])]
+    if outside.size:
+        warnings.warn(f"{name}: {outside.size} value(s) outside the fixed y-range {ylim} "
+                      f"(min {values.min():.3g}, max {values.max():.3g}); widen the range")
+    ax.set_ylim(*ylim)
+
+
+def plot_experiment(results_list, save_path, mse_ylim=(2e-3, 3)):
+    """mse_ylim: fixed y-range of the MSE panel (b), shared by all meta-learner and ATE-estimator
+    experiments for comparability; None for matplotlib's automatic range."""
     fig, (ax_ate, ax_mse) = _two_panels()
     x_index = np.arange(len(results_list[0]["test_distribution"]))
 
@@ -96,17 +114,22 @@ def plot_experiment(results_list, save_path):
     handles += ax_ate.plot(x_index, results_list[0]["actual_ate"], color="black", linestyle="--", marker="x",
                            label="Actual ATE")
     if has_ci:
-        handles.append(Patch(color="grey", alpha=0.3, linewidth=0, label="Mean 95% CI"))
+        # generic entry for the shaded bands (mean estimate +- average CI half-width over reps),
+        # each drawn in its estimator's colour; the exact meaning goes into the figure caption
+        handles.append(Patch(color="grey", alpha=0.3, linewidth=0, label="Average 95% CI"))
     _format_scenario_axis(ax_ate, results_list)
     ax_ate.set_ylabel("ATE (actual and mean estimate)")
     ax_ate.set_title("(a)", loc="left")
 
     # (b) mean over reps of (estimated ATE - actual ATE)^2, log scale (MSEs span orders of magnitude)
+    mses = []
     for i, results in enumerate(results_list):
         errors = np.asarray(results["estimated_ate_reps"]) - np.asarray(results["actual_ate"])
-        ax_mse.plot(x_index, np.mean(errors ** 2, axis=0), **_style(i))
+        mses.append(np.mean(errors ** 2, axis=0))
+        ax_mse.plot(x_index, mses[-1], **_style(i))
     _format_scenario_axis(ax_mse, results_list)
     ax_mse.set_yscale("log")
+    _fixed_ylim(ax_mse, mses, mse_ylim, "MSE")
     ax_mse.set_ylabel("MSE of the ATE estimate")
     ax_mse.set_title("(b)", loc="left")
 
@@ -114,10 +137,11 @@ def plot_experiment(results_list, save_path):
     _save(fig, save_path)
 
 
-def plot_coverage(results_list, n_reps, save_path):
+def plot_coverage(results_list, n_reps, save_path, width_ylim=(0, 2.6)):
     """95% CI coverage (a) and mean CI width (b) per test distribution, from each results dict's
     "coverage" and "mean_ci_width". The grey band is the Monte Carlo range of an exact 95% CI over
-    n_reps reps: 0.95 +- 1.96 sqrt(0.95 * 0.05 / n_reps).
+    n_reps reps: 0.95 +- 1.96 sqrt(0.95 * 0.05 / n_reps). width_ylim: fixed y-range of the width
+    panel (b), shared by all experiments for comparability; None for an automatic range from 0.
     """
     fig, (ax_cov, ax_width) = _two_panels()
     x_index = np.arange(len(results_list[0]["test_distribution"]))
@@ -136,7 +160,9 @@ def plot_coverage(results_list, n_reps, save_path):
     ax_cov.set_ylabel("Coverage of the 95% CI")
     ax_cov.set_title("(a)", loc="left")
     _format_scenario_axis(ax_width, results_list)
-    ax_width.set_ylim(bottom=0)
+    if width_ylim is None:
+        ax_width.set_ylim(bottom=0)
+    _fixed_ylim(ax_width, [results["mean_ci_width"] for results in results_list], width_ylim, "CI width")
     ax_width.set_ylabel("Mean width of the 95% CI")
     ax_width.set_title("(b)", loc="left")
 
@@ -147,27 +173,56 @@ def plot_coverage(results_list, n_reps, save_path):
 COUNTRY_NAMES = {"UK": "United Kingdom", "ITAL": "Italy", "SWIT": "Switzerland"}
 
 
-def plot_ist(rows, learner_labels, save_path):
-    """Per target country (one row dict each, values in percentage points): the randomized estimate
-    with its 95% CI and each learner's transported estimate (learner labels only; "transported" belongs
-    in the caption). The learners' own uncertainty is not shown.
-    """
+def _ist_errorbar(ax, x, rows, key, label, **style):
+    """Point rows[key] with its 95% CI from rows[key_ci_low], rows[key_ci_high] (key "benchmark" uses
+    the column benchmark_rd for the point)."""
+    point = np.array([r["benchmark_rd" if key == "benchmark" else key] for r in rows])
+    low, high = np.array([r[f"{key}_ci_low"] for r in rows]), np.array([r[f"{key}_ci_high"] for r in rows])
+    return ax.errorbar(x, point, yerr=[point - low, high - point], linestyle="none", capsize=3, linewidth=1,
+                       label=label, **style)
+
+
+def _ist_figure(rows, n_markers):
+    """Figure with one group per target country; returns fig, ax and the x-positions of the markers."""
     fig, ax = plt.subplots(figsize=(TEXT_WIDTH, PANEL_HEIGHT), layout="constrained")
     x_index = np.arange(len(rows))
-    offsets = np.linspace(-0.24, 0.24, len(learner_labels) + 1)
     ax.axhline(0.0, color="grey", linewidth=0.8, linestyle="--")
-
-    benchmark = np.array([r["benchmark_rd"] for r in rows])
-    ci = np.array([[r["benchmark_rd"] - r["benchmark_ci_low"], r["benchmark_ci_high"] - r["benchmark_rd"]] for r in rows]).T
-    handles = [ax.errorbar(x_index + offsets[0], benchmark, yerr=ci, fmt="D", color="black", capsize=3,
-                           markersize=4, linewidth=1, label="Randomized estimate in target (95% CI)")]
-    for i, (offset, label) in enumerate(zip(offsets[1:], learner_labels)):
-        handles += ax.plot(x_index + offset, [r[label] for r in rows], linestyle="none", label=label, **_style(i))
-
     ax.set_xticks(x_index)
     ax.set_xticklabels([COUNTRY_NAMES.get(r["country"], r["country"]) for r in rows])
     ax.set_xlim(-0.5, len(rows) - 0.5)
     ax.set_xlabel("Target country")
     ax.set_ylabel("Risk difference (pp)")
+    return fig, ax, [x_index + offset for offset in np.linspace(-0.27, 0.27, n_markers)]
+
+
+BENCHMARK_STYLE = dict(marker="D", color="black", markersize=4)
+BENCHMARK_LABEL = "Randomized estimate in target (95% CI)"
+
+
+def plot_ist(rows, learner_labels, save_path):
+    """Per target country (one row dict each, values in percentage points): the randomized estimate
+    with its 95% CI, the untransported source estimate (risk difference over all source patients) and
+    each learner's transported estimate (learner labels only; "transported" belongs in the caption).
+    The learners' own uncertainty is not shown.
+    """
+    fig, ax, positions = _ist_figure(rows, len(learner_labels) + 2)
+    handles = [_ist_errorbar(ax, positions[0], rows, "benchmark", BENCHMARK_LABEL, **BENCHMARK_STYLE)]
+    handles += ax.plot(positions[1], [r["source_rd_untransported"] for r in rows], linestyle="none",
+                       marker="o", color="grey", markerfacecolor="none", label="Source, not transported")
+    for i, (x, label) in enumerate(zip(positions[2:], learner_labels)):
+        handles += ax.plot(x, [r[label] for r in rows], linestyle="none", label=label, **_style(i))
+    _bottom_legend(fig, handles, ncol=3)
+    _save(fig, save_path)
+
+
+def plot_ist_ci(rows, save_path):
+    """Per target country: the randomized estimate, the cross-fitted T-learner's plug-in estimate with
+    its naive 95% CI and the AIPW-corrected estimate with its 95% CI (colours as in plot_coverage)."""
+    fig, ax, positions = _ist_figure(rows, 3)
+    handles = [
+        _ist_errorbar(ax, positions[0], rows, "benchmark", BENCHMARK_LABEL, **BENCHMARK_STYLE),
+        _ist_errorbar(ax, positions[1], rows, "plug_in", "Plug-in (naive CI)", **_style(0)),
+        _ist_errorbar(ax, positions[2], rows, "aipw", "AIPW-corrected", **_style(1)),
+    ]
     _bottom_legend(fig, handles)
     _save(fig, save_path)

@@ -19,12 +19,13 @@ Each setting with a short justification, phrased so it can go into the thesis.
   the phenomenon under study. n = 1000 is also a common scale in CATE simulation studies.
 - **Test populations: the Beta shape sweep Beta(a, 10 - a), a = 2, 3, ..., 8 (test mean 0.2 to
   0.8; covariate shift into the tails, Beta(5, 5) = training in the middle), 100,000 units per
-  sweep point, drawn once.** The test sample approximates the learner's estimated ATE,
-  E_test[tau_hat(X)], by Monte Carlo integration. Its effect on the reported MSE is at most a few
-  percent at the ends of the sweep and at most ~10% at its centre, where all MSEs are smallest
-  (derivation in "Monte Carlo error analysis", part B). Since the sample is drawn once, more
-  replications would not reduce this error, hence the large size. It is not meant to mimic a real
-  sample size.
+  sweep point, redrawn every rep (after the training data, from the rep's stream).** The test
+  sample approximates the learner's estimated ATE, E_test[tau_hat(X)], by Monte Carlo integration,
+  i.e. the plug-in estimate in the limit m -> infinity, so the comparison isolates the CATE-learning
+  error from target sampling noise. Since it is redrawn, its integration error is independent
+  across reps and only adds ~v_bar / M ~ 1e-5 to the expected MSE (part B). It is not meant to
+  mimic a real sample size. (Earlier runs used one fixed sample, drawn once; then the error is
+  shared by all reps, bounded by ~10% of the MSE at the centre of the sweep - old part B.)
 - **Actual ATE: exact in 1-D** (all main experiments), as requested by the supervisor: numerical
   integration of tau against the test density (`scipy.stats` `expect`, i.e. adaptive quadrature),
   with the step's jump location passed to the integrator (`treatment_effect_breakpoints`).
@@ -254,6 +255,15 @@ the source's SHA-256 checksum in `data/ist/README.md`, so the exact version used
   - Classifier (e): Brier ~ 0.25 = 0.5 * 0.5 in every setting, i.e. treatment is unpredictable
     from X (randomization); the most smoothing adds the least noise -> `max_features="sqrt"`,
     `min_samples_leaf=100`.
+- ATE estimators (second plot, `ci_plot`): as in the ATE-estimator experiment, the cross-fitted
+  T-learner's plug-in estimate with its naive CI and the AIPW-corrected estimate with its CI
+  (`ate_estimators.transport_t_learner`, K=5, c=0.05, R=20, same IST forest settings; the
+  source-vs-target forest uses leaf 100 as in the simulation, not tuned on IST). The plug-in here is
+  cross-fitted, so it differs slightly from the T-learner in the meta-learner plot (fit on the full
+  source). One realization per country: the text can say whether each interval is consistent with
+  the randomized estimate, not anything about coverage.
+- Meta-learner plot also shows the untransported source estimate: the risk difference over all
+  source patients pooled (not an average of country estimates), i.e. the source ATE without transport.
 
 ## Monte Carlo error analysis (material for the appendix)
 
@@ -292,6 +302,16 @@ Reference: Morris, White & Crowther (2019), "Using simulation studies to evaluat
 methods", Statistics in Medicine.
 
 ### B. Test sample: justifying Monte Carlo integration of the estimated ATE
+
+**Current design (test sample S_r redrawn every rep, independent of D_r):** the delta_r are then
+independent across reps with E[delta_r | D_r] = 0 and Var(delta_r | D_r) = v_r / M. Hence
+E[MSE_tilde] = MSE + v_bar / M exactly (cross term has mean zero and no shared component), and the
+integration noise is part of the per-rep error, so part A's MCSE already covers it. With
+M = 100,000 and v_bar <~ 1 the offset is <~ 1e-5, i.e. <~ 0.3% of the smallest MSE (~0.004).
+Thesis sentence: "Each estimated ATE is approximated on a fresh sample of M = 100,000 target
+covariates per replication; this adds Var_P(tau_hat(X)) / M <= 10^-5 to the expected MSE."
+
+The steps below analyse the earlier design with one fixed test sample S (kept for reference).
 
 Setup: test sample S = {X_1..X_M} i.i.d. from P, drawn once, independent of all D_r. The code
 reports theta_tilde_r = (1/M) sum_i tau_hat_r(X_i) = theta_hat_r + delta_r and
