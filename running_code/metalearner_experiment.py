@@ -1,3 +1,4 @@
+import csv
 import sys
 from pathlib import Path
 
@@ -22,7 +23,7 @@ import save_run
 SEED = 42
 N_REPS = 100  # training/evaluation replications per learner and test scenario
 TRAIN_POPULATION_SIZE = 1000
-TEST_POPULATION_SIZE = 100_000  # per test-distribution sweep point
+TEST_POPULATION_SIZE = 100_000  # per test-distribution sweep point, redrawn every rep
 ACTUAL_ATE_SAMPLE_SIZE = 1_000_000  # per sweep point; actual ATE for multidimensional sweeps (exact in 1-D)
 # random-forest settings (leaf size 5 chosen under covariate shift; max_features: standard p/3 for
 # regression and sqrt(p) for classification, no effect in 1-D - see experiment_design.md)
@@ -31,8 +32,6 @@ CLASSIFIER_PARAMS = dict(max_features="sqrt", min_samples_leaf=5)
 
 seed_seq = np.random.SeedSequence(SEED)
 rep_rngs = [np.random.default_rng(s) for s in seed_seq.spawn(N_REPS)]
-# fixed target sample, drawn once and reused across all reps
-test_rng = np.random.default_rng(SEED)
 # separate stream for the actual-ATE sample, independent of the training and test samples
 ate_rng = np.random.default_rng(seed_seq.spawn(1)[0])
 
@@ -73,17 +72,18 @@ test_dist = covariates.TEST_DISTRIBUTIONS[test_dist_name]
 
 # output dir name, composed from the *_tag values above - keep tags current when you edit them
 learner_tag = "-vs-".join(tag for tag, _ in learners)
-run_tag = f"experiment_4"
+run_tag = "metalearner_experiment_4"
 
 # -----------------------------------------------------------------------------
-# 2. Evaluate each learner on each test scenario, over N_REPS replications. Each
-# replication's training data is shared across all learners for a paired comparison - only the
-# learner differs, not the data.
+# 2. Evaluate each learner on each test scenario, over N_REPS replications. Each replication draws
+# new training data and new target samples, shared across all learners for a paired comparison -
+# only the learner differs, not the data.
 # -----------------------------------------------------------------------------
-
-test_scenarios = test_dist.covariates(TEST_POPULATION_SIZE, test_rng)
 
 estimated_ate_reps = {tag: [] for tag, _ in learners}
+# variance of the CATE predictions over each target sample: the target sampling error adds its mean / M
+# to the expected MSE (experiment_design.md, part B)
+prediction_var_reps = {tag: [] for tag, _ in learners}
 for rep_num, rep_rng in enumerate(rep_rngs, start=1):
     print(f"Round {rep_num}/{N_REPS}")
     x_train = train_covariates(rep_rng)
@@ -92,10 +92,14 @@ for rep_num, rep_rng in enumerate(rep_rngs, start=1):
     e0, e1 = noise_sampler(x_train, rep_rng)
     a_train = rep_rng.binomial(n=1, p=propensity_shape(x_train))
     y_train = np.where(a_train == 1, mu1_train + e1, mu0_train + e0)
+    # target samples drawn after the training data, so the training data per rep is unchanged
+    test_scenarios = test_dist.covariates(TEST_POPULATION_SIZE, rep_rng)
 
     for tag, make_learner in learners:
         fitted_learner = make_learner(rep_rng).fit(x_train, y_train, a_train)
-        estimated_ate_reps[tag].append([fitted_learner.predict(test_x).mean() for test_x in test_scenarios])
+        predictions = [fitted_learner.predict(test_x) for test_x in test_scenarios]
+        estimated_ate_reps[tag].append([pred.mean() for pred in predictions])
+        prediction_var_reps[tag].append([pred.var(ddof=1) for pred in predictions])
 
 # actual ATE per scenario: exact in 1-D (numerical integration of tau against the test density; tau
 # takes an (n, d) matrix, so the scalar x is wrapped as (1, 1)); otherwise a Monte Carlo average on a
@@ -117,13 +121,14 @@ results_list = [
         "test_distribution": test_dist.tick_labels,
         "axis_label": test_dist.axis_label,
         "estimated_ate_reps": np.array(estimated_ate_reps[tag]),  # shape (N_REPS, len(test_scenarios))
+        "prediction_var_reps": np.array(prediction_var_reps[tag]),  # same shape
         "actual_ate": actual_ate,
     }
     for tag, _ in learners
 ]
 
 # -----------------------------------------------------------------------------
-# 3. Save snapshot + plot to visualisation_output/<run_tag>/
+# 3. Save snapshot, summary table and plot to visualisation_output/<run_tag>/
 # -----------------------------------------------------------------------------
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "visualisation_code"))
@@ -132,4 +137,19 @@ from plotting import plot_experiment
 output_root = Path(__file__).resolve().parent.parent / "visualisation_output"
 run_dir = save_run.save_run(run_tag, SOURCE_SNAPSHOT, output_root=output_root)
 plot_experiment(results_list, run_dir / "plot.png")
+
+with open(run_dir / "summary.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["learner", "test_distribution", "actual_ate", "mean_estimate", "mse", "mcse_mse",
+                     "mean_prediction_var"])
+    for results in results_list:
+        squared_errors = (results["estimated_ate_reps"] - actual_ate) ** 2
+        mse = squared_errors.mean(axis=0)
+        # Monte Carlo standard error of the MSE: sd of the squared errors over reps / sqrt(N_REPS)
+        mcse_mse = squared_errors.std(axis=0, ddof=1) / np.sqrt(N_REPS)
+        mean_estimate = results["estimated_ate_reps"].mean(axis=0)
+        mean_prediction_var = results["prediction_var_reps"].mean(axis=0)
+        for i, dist_label in enumerate(test_dist.labels):
+            writer.writerow([results["label"], dist_label, actual_ate[i], mean_estimate[i], mse[i], mcse_mse[i],
+                             mean_prediction_var[i]])
 print(f"Saved to {run_dir}")

@@ -1,5 +1,5 @@
-"""Plug-in ATE estimators for transporting the T-learner's CATE from a source sample to target
-covariate samples: the plain average of the CATE predictions over the target, and the AIPW-corrected
+"""ATE estimators for transporting the T-learner's CATE from a source sample to target covariate
+samples: the plug-in estimate (average of the CATE predictions over the target), and the AIPW-corrected
 estimate (Zeng, Kennedy et al. 2024, Sec. 4.2; methods note ate_CI.pdf), each with its 95% CI SE.
 """
 import numpy as np
@@ -21,6 +21,8 @@ def transport_t_learner(
     classifier_params: dict | None = None,
     density_ratio_params: dict | None = None,
     random_state: int,
+    mu0_true=None,
+    mu1_true=None,
 ) -> list[dict]:
     """Cross-fitted T-learner transported to each target sample in x_targets (list of (m, d) arrays).
 
@@ -35,10 +37,20 @@ def transport_t_learner(
     Returns one dict per target:
         plug_in = mean(t), se_plug_in = sd(t) / sqrt(m) (naive: target sampling only),
         aipw = mean(t) + mean(q), se_aipw = sqrt(var(q) / n + var(t) / m),
-        ratio_capped_share = share of source units whose density ratio was capped.
+        ratio_capped_share = share of source units whose density ratio was capped,
+        t_bar, q_bar, var_t_bar = var(t) / m, var_q_bar = var(q) / n (the two parts of se_aipw^2, so the
+        experiment can compare them with the variances of t_bar and q_bar across replications).
+
+    Diagnostic (simulation only): with the true outcome regressions mu0_true, mu1_true (callables on an
+    (n, d) array), also se_aipw_oracle_resid - se_aipw with q computed from the true residuals
+    y - mu_a(x) (e_hat and r_hat unchanged). If the AIPW interval is conservative because the
+    fitting error of mu_hat inflates var(q), this SE is smaller and closer to the actual SD.
     """
     x, y, a = np.asarray(x), np.asarray(y), np.asarray(a)
     n = len(y)
+    oracle = mu0_true is not None and mu1_true is not None
+    if oracle:
+        mu0_x, mu1_x = mu0_true(x), mu1_true(x)
     source_folds = list(StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=random_state).split(x, a))
 
     # outcome and propensity models per source fold - they do not depend on the target
@@ -56,6 +68,7 @@ def transport_t_learner(
         m = len(x_target)
         target_folds = KFold(n_splits=n_folds, shuffle=True, random_state=random_state).split(x_target)
         t, q, capped = np.empty(m), np.empty(n), np.empty(n, dtype=bool)
+        q_oracle = np.empty(n)
         for (s_train, s_held), (t_train, t_held), (mu0, mu1, e) in zip(source_folds, target_folds, nuisances):
             # density ratio from a source (1) vs. target (0) classifier, via Bayes' rule with the training counts
             x_pool = np.vstack([x[s_train], x_target[t_train]])
@@ -74,12 +87,25 @@ def transport_t_learner(
                 - (1 - a_held) / (1 - e_hat) * (y_held - mu0.predict(x_held))
             )
             t[t_held] = mu1.predict(x_target[t_held]) - mu0.predict(x_target[t_held])
+            if oracle:
+                q_oracle[s_held] = r * (
+                    a_held / e_hat * (y_held - mu1_x[s_held])
+                    - (1 - a_held) / (1 - e_hat) * (y_held - mu0_x[s_held])
+                )
 
-        results.append({
+        var_t_bar, var_q_bar = t.var(ddof=1) / m, q.var(ddof=1) / n
+        result = {
             "plug_in": t.mean(),
-            "se_plug_in": t.std(ddof=1) / np.sqrt(m),
+            "se_plug_in": np.sqrt(var_t_bar),
             "aipw": t.mean() + q.mean(),
-            "se_aipw": np.sqrt(q.var(ddof=1) / n + t.var(ddof=1) / m),
+            "se_aipw": np.sqrt(var_q_bar + var_t_bar),
             "ratio_capped_share": capped.mean(),
-        })
+            "t_bar": t.mean(),
+            "q_bar": q.mean(),
+            "var_t_bar": var_t_bar,
+            "var_q_bar": var_q_bar,
+        }
+        if oracle:
+            result["se_aipw_oracle_resid"] = np.sqrt(q_oracle.var(ddof=1) / n + var_t_bar)
+        results.append(result)
     return results

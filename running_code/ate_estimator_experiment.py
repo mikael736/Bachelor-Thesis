@@ -1,6 +1,6 @@
-"""Comparison of plug-in ATE estimators built on the T-learner: the plain average of the CATE
-predictions over the target vs. the AIPW-corrected estimate, with a 95% CI for each (naive for the
-plain average). Design: experiment_design.md ("ATE-estimator comparison").
+"""Comparison of two ATE estimators built on the cross-fitted T-learner: the plug-in estimate (average
+of the CATE predictions over the target) vs. the AIPW-corrected estimate, with a 95% CI for each (naive
+for the plug-in: target sampling only). Design: experiment_design.md ("ATE-estimator comparison").
 """
 import csv
 import sys
@@ -68,13 +68,15 @@ propensity_shape = lambda x: propensity.sigmoid(x[:, 0], center=0.5, multiplier=
 test_dist_name = "beta-shape-sweep"
 test_dist = covariates.TEST_DISTRIBUTIONS[test_dist_name]
 
-run_tag = "ate_estimators_experiment_4"
+run_tag = "ate_estimator_experiment_4"
 
 # -----------------------------------------------------------------------------
 # 2. Each rep: new source and target samples, both estimators with their CIs per sweep point
 # -----------------------------------------------------------------------------
 
-estimates = {key: [] for key in ("plug_in", "se_plug_in", "aipw", "se_aipw", "ratio_capped_share")}
+estimates = {key: [] for key in ("plug_in", "se_plug_in", "aipw", "se_aipw", "ratio_capped_share",
+                                 # diagnostic for the conservative AIPW interval (diagnostics.csv)
+                                 "t_bar", "q_bar", "var_t_bar", "var_q_bar", "se_aipw_oracle_resid")}
 for rep_num, rep_rng in enumerate(rep_rngs, start=1):
     print(f"Round {rep_num}/{N_REPS}")
     x_train = train_covariates(rep_rng)
@@ -90,6 +92,8 @@ for rep_num, rep_rng in enumerate(rep_rngs, start=1):
         n_folds=N_FOLDS, propensity_clip=PROPENSITY_CLIP, max_density_ratio=MAX_DENSITY_RATIO,
         regressor_params=REGRESSOR_PARAMS, classifier_params=CLASSIFIER_PARAMS,
         density_ratio_params=DENSITY_RATIO_PARAMS, random_state=SEED,
+        # true outcome regressions, only for the oracle-residual diagnostic SE
+        mu0_true=mu0_shape, mu1_true=lambda x: mu0_shape(x) + treatment_effect_shape(x),
     )
     for key in estimates:
         estimates[key].append([result[key] for result in rep_results])
@@ -109,7 +113,7 @@ else:
     ])
 
 # per estimator: point estimates (for plot_experiment) and 95% CI coverage / mean width (for plot_coverage)
-estimators = [("Plain average (naive CI)", "plug_in"), ("AIPW-corrected", "aipw")]  # both T-learner
+estimators = [("Plug-in (naive CI)", "plug_in"), ("AIPW-corrected", "aipw")]  # both T-learner
 results_list = []
 for label, key in estimators:
     half_width = 1.96 * estimates[f"se_{key}"]
@@ -139,13 +143,41 @@ plot_coverage(results_list, N_REPS, run_dir / "ci_plot.png")
 
 with open(run_dir / "summary.csv", "w", newline="") as f:
     writer = csv.writer(f)
-    writer.writerow(["estimator", "test_distribution", "actual_ate", "mean_estimate", "mse", "coverage",
-                     "mean_ci_width", "ratio_capped_share"])
+    writer.writerow(["estimator", "test_distribution", "actual_ate", "mean_estimate", "mse", "mcse_mse",
+                     "coverage", "mean_ci_width", "ratio_capped_share"])
     for results in results_list:
-        mse = np.mean((results["estimated_ate_reps"] - actual_ate) ** 2, axis=0)
+        squared_errors = (results["estimated_ate_reps"] - actual_ate) ** 2
+        mse = squared_errors.mean(axis=0)
+        # Monte Carlo standard error of the MSE: sd of the squared errors over reps / sqrt(N_REPS)
+        mcse_mse = squared_errors.std(axis=0, ddof=1) / np.sqrt(N_REPS)
         mean_estimate = results["estimated_ate_reps"].mean(axis=0)
         for i, dist_label in enumerate(test_dist.labels):
-            writer.writerow([results["label"], dist_label, actual_ate[i], mean_estimate[i], mse[i],
+            writer.writerow([results["label"], dist_label, actual_ate[i], mean_estimate[i], mse[i], mcse_mse[i],
                              results["coverage"][i], results["mean_ci_width"][i],
                              estimates["ratio_capped_share"][:, i].mean()])
+
+# diagnostic: is the AIPW variance estimate se_aipw^2 = var(q)/n + var(t)/m conservative, and why?
+# - empirical vs. estimated variance of the AIPW estimate, and of its two parts t_bar and q_bar
+#   (var = variance across reps, est = mean over reps of the estimated variance); cov_t_q is the
+#   empirical covariance of t_bar and q_bar, which the SE formula ignores
+# - the same SE with q from the true residuals y - mu_a(x) (se_aipw_oracle_resid) and its coverage:
+#   if it is close to the empirical SD, the fitting error of mu_hat inflates var(q)
+with open(run_dir / "diagnostics.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["test_distribution", "var_aipw", "est_var_aipw", "var_t_bar", "est_var_t_bar",
+                     "var_q_bar", "est_var_q_bar", "cov_t_q", "est_var_aipw_oracle_resid",
+                     "coverage_aipw", "coverage_aipw_oracle_resid"])
+    var_aipw = estimates["aipw"].var(axis=0, ddof=1)
+    var_t_bar = estimates["t_bar"].var(axis=0, ddof=1)
+    var_q_bar = estimates["q_bar"].var(axis=0, ddof=1)
+    cov_t_q = np.array([np.cov(estimates["t_bar"][:, i], estimates["q_bar"][:, i])[0, 1]
+                        for i in range(len(actual_ate))])
+    se_oracle = estimates["se_aipw_oracle_resid"]
+    coverage_oracle = np.mean(np.abs(estimates["aipw"] - actual_ate) <= 1.96 * se_oracle, axis=0)
+    coverage_aipw = results_list[1]["coverage"]
+    for i, dist_label in enumerate(test_dist.labels):
+        writer.writerow([dist_label, var_aipw[i], (estimates["se_aipw"][:, i] ** 2).mean(),
+                         var_t_bar[i], estimates["var_t_bar"][:, i].mean(),
+                         var_q_bar[i], estimates["var_q_bar"][:, i].mean(), cov_t_q[i],
+                         (se_oracle[:, i] ** 2).mean(), coverage_aipw[i], coverage_oracle[i]])
 print(f"Saved to {run_dir}")
