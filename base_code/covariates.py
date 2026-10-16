@@ -75,7 +75,7 @@ BETA_SHAPE_SWEEP = TestDistribution(
         beta(n, a=a, b=b, rng=rng) for a, b in _beta_shape_sweep_params
     ],
     tick_labels=[f"({a:g},{b:g})" for a, b in _beta_shape_sweep_params],
-    axis_label="Target distribution Beta(a, b)",
+    axis_label=r"Target distribution Beta($\alpha$, $\beta$)",
     distributions=[stats.beta(a, b) for a, b in _beta_shape_sweep_params],
 )
 
@@ -87,7 +87,7 @@ COORDINATEWISE_3D_SHAPE_SWEEP = TestDistribution(
         coordinatewise_3d(n, a=a, b=b, rng=rng) for a, b in _beta_shape_sweep_params
     ],
     tick_labels=[f"({a:g},{b:g})" for a, b in _beta_shape_sweep_params],
-    axis_label="Target distribution of $x_0$: Beta(a, b)",
+    axis_label=r"Target distribution of $x_0$: Beta($\alpha$, $\beta$)",
 )
 
 

@@ -78,11 +78,11 @@ class XLearner:
 
 
 class DRLearner:
-    """Doubly robust learner (Kennedy, 2020), with K-fold cross-fitting of the nuisance models.
+    """Doubly robust learner (Kennedy, 2023), with K-fold cross-fitting of the nuisance models.
 
-    cross_fit=False fits the nuisances on all units and evaluates them in-sample instead - with
-    flexible base learners (e.g. rf) the residuals then nearly vanish and the pseudo-outcome
-    collapses onto the T-learner's estimate; kept only as an ablation.
+    The cross-fitting is required: nuisances evaluated in-sample (rf, small leaves) leave nearly no
+    residual, so the correction term vanishes and the pseudo-outcome collapses onto the T-learner's
+    estimate.
     """
 
     def __init__(
@@ -90,7 +90,6 @@ class DRLearner:
         base_learner: str = "rf",
         propensity_learner: str = "rf",
         *,
-        cross_fit: bool = False,
         n_folds: int = 5,
         propensity_clip: float = 0.05,
         regressor_params: dict | None = None,
@@ -99,13 +98,12 @@ class DRLearner:
     ):
         self.base_learner = base_learner
         self.propensity_learner = propensity_learner
-        self.cross_fit = cross_fit
         self.n_folds = n_folds
         self.propensity_clip = propensity_clip
         self.regressor_params = regressor_params
         self.classifier_params = classifier_params
         self.random_state = random_state
-        self.name = f"DRLearner[{base_learner}]" if cross_fit else f"DRLearner[{base_learner}, no cross-fit]"
+        self.name = f"DRLearner[{base_learner}]"
         self.tau_model = get_regressor(base_learner, random_state=random_state, rf_params=regressor_params)
 
     def _fit_nuisances(self, x, y, a):
@@ -131,17 +129,14 @@ class DRLearner:
     def fit(self, x, y, a):
         x, y, a = np.asarray(x), np.asarray(y), np.asarray(a)
 
-        # Steps 1+2: nuisances and pseudo-outcome. Cross-fitted: each unit's phi comes from
+        # Steps 1+2: nuisances and pseudo-outcome, cross-fitted: each unit's phi comes from
         # nuisances fitted on the other folds, never on the unit itself. Folds are stratified by
         # a so every fold's training part keeps both arms in the original proportion.
-        if self.cross_fit:
-            phi = np.empty(len(y))
-            folds = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_state)
-            for train_idx, held_idx in folds.split(x, a):
-                nuisances = self._fit_nuisances(x[train_idx], y[train_idx], a[train_idx])
-                phi[held_idx] = self._pseudo_outcome(nuisances, x[held_idx], y[held_idx], a[held_idx])
-        else:
-            phi = self._pseudo_outcome(self._fit_nuisances(x, y, a), x, y, a)
+        phi = np.empty(len(y))
+        folds = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_state)
+        for train_idx, held_idx in folds.split(x, a):
+            nuisances = self._fit_nuisances(x[train_idx], y[train_idx], a[train_idx])
+            phi[held_idx] = self._pseudo_outcome(nuisances, x[held_idx], y[held_idx], a[held_idx])
 
         # Step 3: regress the pseudo-outcome on x (all units) -> tau_hat
         self.tau_model.fit(x, phi)

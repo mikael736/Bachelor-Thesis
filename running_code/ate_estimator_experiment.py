@@ -180,4 +180,7 @@ with open(run_dir / "diagnostics.csv", "w", newline="") as f:
                          var_t_bar[i], estimates["var_t_bar"][:, i].mean(),
                          var_q_bar[i], estimates["var_q_bar"][:, i].mean(), cov_t_q[i],
                          (se_oracle[:, i] ** 2).mean(), coverage_aipw[i], coverage_oracle[i]])
+
+# per-rep estimates and SEs (N_REPS, n_scenarios), for paired comparisons of the estimators later
+np.savez(run_dir / "estimates.npz", actual_ate=actual_ate, **estimates)
 print(f"Saved to {run_dir}")
