@@ -1,7 +1,7 @@
 """Figures for the thesis, sized for direct inclusion (\\includegraphics[width=\\textwidth]): each is
 saved as PDF (vector, for the thesis) and PNG (preview).
 
-plot_experiment: synthetic experiments - actual vs. mean estimated ATE (a) and mean squared error (b)
+plot_experiment: synthetic experiments - target vs. mean estimated ATE (a) and mean squared error (b)
 per test distribution, from each results dict's "estimated_ate_reps" (n_reps, n_scenarios) and
 "actual_ate" (n_scenarios); "test_distribution" holds the tick labels, "axis_label" the x-axis label. If a results dict carries "ci_half_width_reps" (same shape as the
 estimates), panel (a) also shades its mean 95% CI.
@@ -110,15 +110,15 @@ def plot_experiment(results_list, save_path, mse_ylim=(2e-3, 3)):
             half_width = np.mean(results["ci_half_width_reps"], axis=0)
             ax_ate.fill_between(x_index, mean_estimate - half_width, mean_estimate + half_width,
                                 color=_style(i)["color"], alpha=0.15, linewidth=0)
-    # actual ATE depends only on the test scenario, so it's shared across estimators
+    # target ATE depends only on the test scenario, so it's shared across estimators
     handles += ax_ate.plot(x_index, results_list[0]["actual_ate"], color="black", linestyle="--", marker="x",
-                           label="Actual ATE")
+                           label="Target ATE")
     if has_ci:
         # generic entry for the shaded bands (mean estimate +- average CI half-width over reps),
         # each drawn in its estimator's colour; the exact meaning goes into the figure caption
         handles.append(Patch(color="grey", alpha=0.3, linewidth=0, label="Average 95% CI"))
     _format_scenario_axis(ax_ate, results_list)
-    ax_ate.set_ylabel("ATE (actual and mean estimate)")
+    ax_ate.set_ylabel("ATE (target and mean estimate)")
     ax_ate.set_title("(a)", loc="left")
 
     # (b) mean over reps of (estimated ATE - actual ATE)^2, log scale (MSEs span orders of magnitude)
@@ -201,14 +201,14 @@ BENCHMARK_LABEL = "Randomized estimate in target (95% CI)"
 
 def plot_ist(rows, learner_labels, save_path):
     """Per target country (one row dict each, values in percentage points): the randomized estimate
-    with its 95% CI, the untransported source estimate (risk difference over all source patients) and
+    with its 95% CI, the untransported study estimate (risk difference over all study patients) and
     each learner's transported estimate (learner labels only; "transported" belongs in the caption).
     The learners' own uncertainty is not shown.
     """
     fig, ax, positions = _ist_figure(rows, len(learner_labels) + 2)
     handles = [_ist_errorbar(ax, positions[0], rows, "benchmark", BENCHMARK_LABEL, **BENCHMARK_STYLE)]
     handles += ax.plot(positions[1], [r["source_rd_untransported"] for r in rows], linestyle="none",
-                       marker="o", color="grey", markerfacecolor="none", label="Source, not transported")
+                       marker="o", color="grey", markerfacecolor="none", label="Study, not transported")
     for i, (x, label) in enumerate(zip(positions[2:], learner_labels)):
         handles += ax.plot(x, [r[label] for r in rows], linestyle="none", label=label, **_style(i))
     _bottom_legend(fig, handles, ncol=3)
