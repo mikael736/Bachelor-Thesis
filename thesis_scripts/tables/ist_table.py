@@ -40,7 +40,7 @@ def median_iqr(values):
 
 
 def risk_difference(g):
-    """Risk difference (aspirin - no aspirin) in percentage points and its Wald 95% CI."""
+    """Risk difference (aspirin - no aspirin) in percentage points and its normal-based 95% CI."""
     y1, y0 = data.y[g & (data.a == 1)], data.y[g & (data.a == 0)]
     p1, p0 = y1.mean(), y0.mean()
     rd, se = p1 - p0, np.sqrt(p1 * (1 - p1) / len(y1) + p0 * (1 - p0) / len(y0))

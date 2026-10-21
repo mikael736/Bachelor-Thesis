@@ -29,7 +29,7 @@ def interval(row, low, high):
 
 lines_spec = [
     ("Benchmark", lambda r: number(r["benchmark_rd"])),
-    ("\\quad 95\\% Wald interval", lambda r: interval(r, "benchmark_ci_low", "benchmark_ci_high")),
+    ("\\quad 95\\% normal-based interval", lambda r: interval(r, "benchmark_ci_low", "benchmark_ci_high")),
     ("Study, not transported", lambda r: number(r["source_rd_untransported"])),
     (None, "Transported plug-in estimates (Figure~\\ref{fig:ist})"),
     ("T-learner", lambda r: number(r["T-learner"])),
