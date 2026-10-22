@@ -3,13 +3,12 @@ country, fit the T-, X- and DR-learner on all other countries, average the predi
 target's covariates (plug-in estimate), and compare with the target's own randomized estimate.
 Second part, as in the ATE-estimator experiment: the cross-fitted T-learner's plug-in estimate with
 its naive CI and the AIPW-corrected estimate with its CI.
-Design and data preparation: experiment_design.md ("IST real-data experiment").
 """
 import csv
 import sys
 from pathlib import Path
 
-# snapshot this script at launch, before the long run - the file may be edited for other runs meanwhile
+# snapshot of this script at launch, saved with the outputs
 SOURCE_SNAPSHOT = Path(__file__).read_text(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "base_code"))
@@ -26,12 +25,12 @@ import save_run
 # -----------------------------------------------------------------------------
 
 SEED = 42
-TARGET_COUNTRIES = ["UK", "ITAL", "SWIT"]  # the three largest by enrolment
-# tuned by OOB Brier score on the never-target countries (ist_tune_rf.py)
+TARGET_COUNTRIES = ["UK", "ITAL", "SWIT"]  # the three countries with the most patients
+# random-forest settings, chosen by out-of-bag Brier score on the countries that are never a target
+# (ist_tuning.py)
 REGRESSOR_PARAMS = dict(max_features=1 / 3, min_samples_leaf=20)
 CLASSIFIER_PARAMS = dict(max_features="sqrt", min_samples_leaf=100)
-# AIPW-corrected estimator: settings as in ate_estimator_experiment.py; the source-vs-target forest
-# for the density ratio as there (leaf 100, not tuned on IST)
+# AIPW-corrected estimator and study-vs-target forest for the density ratio: as in ate_estimator_experiment.py
 N_FOLDS = 5
 MAX_DENSITY_RATIO = 20
 PROPENSITY_CLIP = 0.05
@@ -45,7 +44,7 @@ learners = [
 ]
 run_tag = "ist_experiment"
 
-data = ist_data.load_ist()  # patients with a missing outcome are excluded
+data = ist_data.load_ist()  # patients without a recorded outcome are excluded
 
 
 def risk_difference(y, a):
@@ -56,8 +55,8 @@ def risk_difference(y, a):
 
 
 # -----------------------------------------------------------------------------
-# 1. Transport: fit on the source (other countries), average the CATE over the target
-# patients' covariates. Target outcomes are not used here.
+# 1. Transport: fit on the study sample (all other countries), average the CATE over the target
+# patients' covariates; the target outcomes are not used
 # -----------------------------------------------------------------------------
 
 estimates, ate_results = {}, {}
@@ -69,7 +68,7 @@ for country in TARGET_COUNTRIES:
         for tag, make_learner in learners
     }
     print(f"{country}: " + ", ".join(f"{tag} {100 * est:.2f} pp" for tag, est in estimates[country].items()))
-    # cross-fitted T-learner: plug-in (naive CI) and AIPW-corrected estimate (CI), as in Chapter 4
+    # cross-fitted T-learner: plug-in estimate (naive CI) and AIPW-corrected estimate (CI)
     ate_results[country] = ate_estimators.transport_t_learner(
         data.x[source], data.y[source], data.a[source], [x_target],
         n_folds=N_FOLDS, propensity_clip=PROPENSITY_CLIP, max_density_ratio=MAX_DENSITY_RATIO,
@@ -82,7 +81,7 @@ for country in TARGET_COUNTRIES:
           f"capped ratios {100 * result['ratio_capped_share']:.1f}%")
 
 # -----------------------------------------------------------------------------
-# 2. Reveal: each target's randomized estimate with its 95% CI (values in percentage points)
+# 2. Benchmark: each target's randomized estimate with its 95% CI (values in percentage points)
 # -----------------------------------------------------------------------------
 
 rows = []

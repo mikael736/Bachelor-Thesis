@@ -1,7 +1,7 @@
 """Compare random-forest min_samples_leaf values by out-of-bag (OOB) error of the nuisance models
-mu0, mu1 (regressors, per arm) and e (classifier), on the same data-generating process as
-metalearner_experiment.py. Reports OOB error against the observed y / a and, since the data is
-simulated, against the true mu0, mu1, e (no noise floor).
+mu0, mu1 (regressors, per arm) and e (classifier), on the data-generating process of one experiment
+of metalearner_experiment.py (E1 by default). Reports OOB error against the observed y / a and, since the data is
+simulated, against the true mu0, mu1, e.
 """
 import sys
 from pathlib import Path
@@ -21,10 +21,11 @@ N_REPS = 20
 TRAIN_POPULATION_SIZE = 1000
 LEAF_SIZES = [1, 2, 5, 10, 20, 50, 100]
 
-# data-generating process - keep in sync with metalearner_experiment.py
+# data-generating process, as in E1 of metalearner_experiment.py; set mu0_shape and treatment_effect_shape
+# as listed there for E2-E4
 train_covariates = lambda rng: covariates.beta(TRAIN_POPULATION_SIZE, a=5.0, b=5.0, rng=rng)
 mu0_shape = lambda x: response_surface.sine(x[:, 0], amplitude=3.0, frequency=2.0)
-treatment_effect_shape = lambda x: response_surface.constant(x[:, 0], value=2.0)
+treatment_effect_shape = lambda x: response_surface.constant(x[:, 0], value=1.0)
 noise_sampler = lambda x, rng: noise.homoskedastic_gaussian(x[:, 0], sd=1.0, rng=rng)
 propensity_shape = lambda x: propensity.sigmoid(x[:, 0], center=0.5, multiplier=5.0)
 

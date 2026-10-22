@@ -1,6 +1,7 @@
 """Load and prepare the International Stroke Trial (IST) data (Sandercock et al. 2011, version 2,
-IST_corrected.csv) for the real-data experiment. Preparation is described in
-running_code/experiment_design.md ("IST real-data experiment").
+IST_corrected.csv) for the real-data experiment: 16 covariates recorded before randomization, the
+categorical ones one-hot encoded with a level of their own for missing values; patients without a
+recorded six-month outcome are excluded.
 """
 import csv
 from dataclasses import dataclass

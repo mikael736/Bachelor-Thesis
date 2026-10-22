@@ -2,9 +2,10 @@
 saved as PDF (vector, for the thesis) and PNG (preview).
 
 plot_experiment: synthetic experiments - target vs. mean estimated ATE (a) and mean squared error (b)
-per test distribution, from each results dict's "estimated_ate_reps" (n_reps, n_scenarios) and
-"actual_ate" (n_scenarios); "test_distribution" holds the tick labels, "axis_label" the x-axis label. If a results dict carries "ci_half_width_reps" (same shape as the
-estimates), panel (a) also shades its mean 95% CI.
+per target distribution, from each results dict's "estimated_ate_reps" (n_reps, n_scenarios) and
+"actual_ate" (n_scenarios); "test_distribution" holds the tick labels, "axis_label" the x-axis label.
+If a results dict carries "ci_half_width_reps" (same shape as the estimates), panel (a) also shades
+its mean 95% CI.
 
 plot_coverage: ATE-estimator experiment - 95% CI coverage (a) and mean CI width (b).
 
@@ -25,7 +26,7 @@ from matplotlib.patches import Patch
 
 TEXT_WIDTH = 15 / 2.54  # inches: thesis \textwidth = 15 cm (ETHDASA.sty, SfS template; 11 pt body, lmodern)
 PANEL_HEIGHT = 2.7  # inches, for the two-panel figures
-OKABE_ITO = ["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9"]  # colourblind-safe
+OKABE_ITO = ["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9"]  # colorblind-safe
 MARKERS = ["o", "s", "^", "D", "v", "P"]
 
 plt.rcParams.update({
@@ -99,7 +100,7 @@ def plot_experiment(results_list, save_path, mse_ylim=(2e-3, 3)):
     fig, (ax_ate, ax_mse) = _two_panels()
     x_index = np.arange(len(results_list[0]["test_distribution"]))
 
-    # (a) actual ATE and each estimator's mean estimate, with its mean 95% CI if available
+    # (a) target ATE and each estimator's mean estimate, with its mean 95% CI if available
     handles = []
     has_ci = False
     for i, results in enumerate(results_list):
@@ -110,18 +111,18 @@ def plot_experiment(results_list, save_path, mse_ylim=(2e-3, 3)):
             half_width = np.mean(results["ci_half_width_reps"], axis=0)
             ax_ate.fill_between(x_index, mean_estimate - half_width, mean_estimate + half_width,
                                 color=_style(i)["color"], alpha=0.15, linewidth=0)
-    # target ATE depends only on the test scenario, so it's shared across estimators
+    # target ATE depends only on the target distribution, so it is shared across estimators
     handles += ax_ate.plot(x_index, results_list[0]["actual_ate"], color="black", linestyle="--", marker="x",
                            label="Target ATE")
     if has_ci:
-        # generic entry for the shaded bands (mean estimate +- average CI half-width over reps),
-        # each drawn in its estimator's colour; the exact meaning goes into the figure caption
+        # generic legend entry for the shaded bands (mean estimate +- average CI half-width over reps),
+        # each drawn in its estimator's color
         handles.append(Patch(color="grey", alpha=0.3, linewidth=0, label="Average 95% CI"))
     _format_scenario_axis(ax_ate, results_list)
     ax_ate.set_ylabel("ATE (target and mean estimate)")
     ax_ate.set_title("(a)", loc="left")
 
-    # (b) mean over reps of (estimated ATE - actual ATE)^2, log scale (MSEs span orders of magnitude)
+    # (b) mean over reps of (estimated ATE - target ATE)^2, log scale (MSEs span orders of magnitude)
     mses = []
     for i, results in enumerate(results_list):
         errors = np.asarray(results["estimated_ate_reps"]) - np.asarray(results["actual_ate"])
@@ -138,7 +139,7 @@ def plot_experiment(results_list, save_path, mse_ylim=(2e-3, 3)):
 
 
 def plot_coverage(results_list, n_reps, save_path, width_ylim=(0, 2.6)):
-    """95% CI coverage (a) and mean CI width (b) per test distribution, from each results dict's
+    """95% CI coverage (a) and mean CI width (b) per target distribution, from each results dict's
     "coverage" and "mean_ci_width". The grey band is the Monte Carlo range of an exact 95% CI over
     n_reps reps: 0.95 +- 1.96 sqrt(0.95 * 0.05 / n_reps). width_ylim: fixed y-range of the width
     panel (b), shared by all experiments for comparability; None for an automatic range from 0.
@@ -202,8 +203,7 @@ BENCHMARK_LABEL = "Randomized estimate in target (95% CI)"
 def plot_ist(rows, learner_labels, save_path):
     """Per target country (one row dict each, values in percentage points): the randomized estimate
     with its 95% CI, the untransported study estimate (risk difference over all study patients) and
-    each learner's transported estimate (learner labels only; "transported" belongs in the caption).
-    The learners' own uncertainty is not shown.
+    each learner's transported estimate. The learners' own uncertainty is not shown.
     """
     fig, ax, positions = _ist_figure(rows, len(learner_labels) + 2)
     handles = [_ist_errorbar(ax, positions[0], rows, "benchmark", BENCHMARK_LABEL, **BENCHMARK_STYLE)]
@@ -217,7 +217,7 @@ def plot_ist(rows, learner_labels, save_path):
 
 def plot_ist_ci(rows, save_path):
     """Per target country: the randomized estimate, the cross-fitted T-learner's plug-in estimate with
-    its naive 95% CI and the AIPW-corrected estimate with its 95% CI (colours as in plot_coverage)."""
+    its naive 95% CI and the AIPW-corrected estimate with its 95% CI (colors as in plot_coverage)."""
     fig, ax, positions = _ist_figure(rows, 3)
     handles = [
         _ist_errorbar(ax, positions[0], rows, "benchmark", BENCHMARK_LABEL, **BENCHMARK_STYLE),

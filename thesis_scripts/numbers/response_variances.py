@@ -1,6 +1,6 @@
 """Variance of the response functions of Chapter 5 under the study distribution Beta(5, 5) and the
 target distributions Beta(a, 10 - a), a = 2, ..., 8, by numerical integration (scipy expect).
-Used for the caption of Table "experiments" and the target-sampling footnote in Section "Design".
+Used for the caption of Table "experiments" and the target-sampling footnote in Section "Setup".
 Run: python response_variances.py
 """
 import numpy as np

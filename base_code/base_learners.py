@@ -1,11 +1,11 @@
+"""Base learners for the meta-learners: random forest (default), linear regression and neural network."""
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-# MLPs are sensitive to feature scale and to under-fitting if capped at sklearn's default
-# max_iter=200, so wrap them in a scaling pipeline and give them more iterations to converge.
+# MLP settings: standardized inputs, max_iter raised from sklearn's default
 _MLP_KWARGS = dict(hidden_layer_sizes=(32, 16), max_iter=2000)
 
 

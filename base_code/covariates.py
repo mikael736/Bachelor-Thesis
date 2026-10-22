@@ -1,7 +1,5 @@
-"""Part 1: covariate (x) generators - sample the training and test/deployment distributions.
-Part 2: named test-distribution sweeps built on top of them - each is a family of test
-populations (e.g. "Normal(mean,1) for mean sweeping -5..5") that a running_code script picks by
-name to evaluate a fitted learner's extrapolation as the test population drifts from training.
+"""Covariate generators for the study and target distributions (part 1) and named sweeps of target
+distributions built on them (part 2), selected by name in the running scripts.
 """
 from dataclasses import dataclass
 from typing import Callable
@@ -41,7 +39,7 @@ def coordinatewise_3d(n: int, *, a: float, b: float, rng: np.random.Generator) -
 
 @dataclass(frozen=True)
 class TestDistribution:
-    """One named sweep of test populations. labels names each sweep point in full (tables).
+    """One named sweep of target populations. labels names each sweep point in full (tables).
     covariates(n, rng) draws a fresh sample of n units for every sweep point and returns them as a
     list, in the same order as labels. distributions (1-D sweeps only) holds the scipy distribution
     of each sweep point, for exact expectations; None for multidimensional sweeps. For plots,

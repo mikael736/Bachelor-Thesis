@@ -1,8 +1,7 @@
 """Descriptive table of the IST data for Section "Data" of Chapter 6: covariates and
 six-month outcome per target country, the 33 never-target countries and all countries (patients with
 outcome only, as in the experiment). Uses the loader of the code repository (base_code/ist_data.py).
-Writes ist_data.tex next to this script (tabular,
-input by IST.tex). Run: python ist_table.py
+Writes ist_data.tex next to this script (tabular, input by IST.tex). Run: python ist_table.py
 """
 import sys
 from pathlib import Path
@@ -44,14 +43,13 @@ def risk_difference(g):
     y1, y0 = data.y[g & (data.a == 1)], data.y[g & (data.a == 0)]
     p1, p0 = y1.mean(), y0.mean()
     rd, se = p1 - p0, np.sqrt(p1 * (1 - p1) / len(y1) + p0 * (1 - p0) / len(y0))
-    rd_text = f"{100 * rd:.1f}".replace("-0.0", "0.0")  # UK: -0.04 rounds to 0.0, not -0.0
+    rd_text = f"{100 * rd:.1f}".replace("-0.0", "0.0")  # -0.0 printed as 0.0
     return f"${rd_text}$", f"$\\pm{196 * se:.1f}$"
 
 
 risk_differences = [risk_difference(g) for g in groups]
 rows = [
-    # units and summaries (mean (SD), median (IQR), shares in %) are given in the caption, so that the
-    # only parentheses in a row are the SD or IQR
+    # units and summary statistics are given in the caption
     ("Patients", [f"{g.sum()}" for g in groups]),
     ("Allocated to aspirin", percent(data.a)),
     (None, "Covariates"),
@@ -75,7 +73,6 @@ rows = [
     ("\\quad 95\\% CI half-width", [hw for _, hw in risk_differences]),
 ]
 
-# plain \hline rules as in the other tables of the thesis (the template loads no table packages)
 n_cols = len(COLUMN_NAMES)
 lines = [
     f"\\begin{{tabular}}{{l{'r' * n_cols}}}",

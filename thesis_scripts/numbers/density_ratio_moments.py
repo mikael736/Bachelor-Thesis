@@ -1,5 +1,6 @@
 """Second moment of the density ratio r = p_T / p_S for the study distribution Beta(5, 5) and the
-target distributions Beta(a, 10 - a), a = 2, ..., 8 (Section "Results: ATE estimators").
+target distributions Beta(a, 10 - a), a = 2, ..., 8 (Appendix "Second moment of the density ratio",
+Lemma and Table r-moment).
 
 E_S[r(X)^2] = E_T[r(X)] drives the variance of the AIPW correction. With p_S = Beta(5, 5) and
 p_T = Beta(a, 10 - a), r(x) = B(5, 5) / B(a, 10 - a) * x^(a - 5) (1 - x)^(5 - a), so

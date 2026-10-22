@@ -3,7 +3,7 @@ meta_learner_comparison.py and ate_estimator_comparison.py.
 
 load(experiment) returns, per experiment number 1-4, a dict {(method, target): Stats}; method is the value of
 the column "learner" (meta-learner experiments) or "estimator" (ATE-estimator experiments), target e.g.
-"Beta(2,8)". Bias, variance and the Monte Carlo standard errors (MCSE) follow Appendix "MSE and bias with
+"Beta(2,8)". Bias, variance and the Monte Carlo standard errors (MCSE) follow Appendix "Bias and MSE with
 Monte Carlo standard errors": the variance is MSE - bias^2 (divisor N_REPS), the MCSE of the bias is the sd of
 the estimates (divisor N_REPS - 1) / sqrt(N_REPS), the MCSE of the MSE is the column mcse_mse.
 """

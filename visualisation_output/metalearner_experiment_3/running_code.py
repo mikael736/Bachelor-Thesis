@@ -1,11 +1,14 @@
+"""Meta-learner comparison: plug-in ATE estimates of the T-, X- and DR-learner along a sweep of target
+distributions, for one experiment E1-E4 set in part 1.
+"""
 import csv
 import sys
 from pathlib import Path
 
-# snapshot this script at launch, before the long run - the file may be edited for other runs meanwhile
+# snapshot of this script at launch, saved with the outputs
 SOURCE_SNAPSHOT = Path(__file__).read_text(encoding="utf-8")
 
-sys.path.insert(0,str(Path(__file__).resolve().parent.parent / "base_code"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "base_code"))
 
 import numpy as np
 
@@ -21,28 +24,31 @@ import save_run
 # -----------------------------------------------------------------------------
 
 SEED = 42
-N_REPS = 100  # training/evaluation replications per learner and test scenario
-TRAIN_POPULATION_SIZE = 1000
-TEST_POPULATION_SIZE = 100_000  # per test-distribution sweep point, redrawn every rep
-ACTUAL_ATE_SAMPLE_SIZE = 1_000_000  # per sweep point; actual ATE for multidimensional sweeps (exact in 1-D)
-# random-forest settings (leaf size 5 chosen under covariate shift; max_features: standard p/3 for
-# regression and sqrt(p) for classification, no effect in 1-D - see experiment_design.md)
+N_REPS = 100  # replications; each draws a new study sample and new target samples
+TRAIN_POPULATION_SIZE = 1000  # study sample size n
+TEST_POPULATION_SIZE = 100_000  # target sample size per target distribution
+ACTUAL_ATE_SAMPLE_SIZE = 1_000_000  # per target distribution; target ATE for multidimensional sweeps (numerical integration in 1-D)
+# random-forest settings (max_features has no effect with one covariate; leaf size: metalearner_tuning.py)
 REGRESSOR_PARAMS = dict(max_features=1 / 3, min_samples_leaf=5)
 CLASSIFIER_PARAMS = dict(max_features="sqrt", min_samples_leaf=5)
 
 seed_seq = np.random.SeedSequence(SEED)
 rep_rngs = [np.random.default_rng(s) for s in seed_seq.spawn(N_REPS)]
-# separate stream for the actual-ATE sample, independent of the training and test samples
+# separate stream for the target-ATE sample, independent of the study and target samples
 ate_rng = np.random.default_rng(seed_seq.spawn(1)[0])
 
 # -----------------------------------------------------------------------------
-# 1. Training setup (edit per experiment)
+# 1. Data-generating process (set per experiment)
 # -----------------------------------------------------------------------------
 
-# training covariate distribution
+# study covariate distribution
 train_covariates = lambda rng: covariates.beta(TRAIN_POPULATION_SIZE, a=5.0, b=5.0, rng=rng)
 
 # response surfaces: mu0(x) and tau(x) = mu1(x) - mu0(x)
+# E1: mu0 = sine(amplitude=3, frequency=2), tau = constant(1)
+# E2: mu0 = linear(slope=7), tau = linear(slope=7)
+# E3: mu0 = linear(slope=7), tau = step(jump=3, threshold=0.7), breakpoints [0.7]
+# E4: mu0 = sine(amplitude=3, frequency=2), tau = linear(slope=7)
 mu0_shape = lambda x: response_surface.linear(x[:, 0], slope=7.0)
 treatment_effect_shape = lambda x: response_surface.step(x[:, 0], jump=3.0, threshold=0.7)
 # jump locations of tau (e.g. [0.7] for a step), so the exact 1-D integral handles them; [] if continuous
@@ -62,22 +68,19 @@ learners = [
     ("DR-learner", lambda rng: cate_learners.DRLearner(classifier_params=CLASSIFIER_PARAMS, **rf)),
 ]
 
-# test-distribution sweep, from covariates.TEST_DISTRIBUTIONS
+# target-distribution sweep, from covariates.TEST_DISTRIBUTIONS
 test_dist_name = "beta-shape-sweep"
 test_dist = covariates.TEST_DISTRIBUTIONS[test_dist_name]
 
-# output dir name - keep it current when you edit the setup above
+# output directory, one per experiment
 run_tag = "metalearner_experiment_3"
 
 # -----------------------------------------------------------------------------
-# 2. Evaluate each learner on each test scenario, over N_REPS replications. Each replication draws
-# new training data and new target samples, shared across all learners for a paired comparison -
-# only the learner differs, not the data.
+# 2. Each replication: a new study sample and new target samples, shared by all learners
 # -----------------------------------------------------------------------------
 
 estimated_ate_reps = {tag: [] for tag, _ in learners}
-# variance of the CATE predictions over each target sample: the target sampling error adds its mean / M
-# to the expected MSE (experiment_design.md, part B)
+# variance of the CATE predictions over each target sample (target sampling error)
 prediction_var_reps = {tag: [] for tag, _ in learners}
 for rep_num, rep_rng in enumerate(rep_rngs, start=1):
     print(f"Round {rep_num}/{N_REPS}")
@@ -87,7 +90,7 @@ for rep_num, rep_rng in enumerate(rep_rngs, start=1):
     e0, e1 = noise_sampler(x_train, rep_rng)
     a_train = rep_rng.binomial(n=1, p=propensity_shape(x_train))
     y_train = np.where(a_train == 1, mu1_train + e1, mu0_train + e0)
-    # target samples drawn after the training data, so the training data per rep is unchanged
+    # target samples drawn after the study sample, so the study sample per replication is unchanged
     test_scenarios = test_dist.covariates(TEST_POPULATION_SIZE, rep_rng)
 
     for tag, make_learner in learners:
@@ -96,9 +99,9 @@ for rep_num, rep_rng in enumerate(rep_rngs, start=1):
         estimated_ate_reps[tag].append([pred.mean() for pred in predictions])
         prediction_var_reps[tag].append([pred.var(ddof=1) for pred in predictions])
 
-# actual ATE per scenario: exact in 1-D (numerical integration of tau against the test density; tau
-# takes an (n, d) matrix, so the scalar x is wrapped as (1, 1)); otherwise a Monte Carlo average on a
-# large independent sample, error SD = sd_t(tau) / sqrt(ACTUAL_ATE_SAMPLE_SIZE) - see experiment_design.md
+# target ATE per target distribution: in 1-D by numerical integration of tau against the target density
+# (tau takes an (n, d) matrix, so the scalar x is wrapped as (1, 1)); otherwise a Monte Carlo average on
+# a large independent sample
 if test_dist.distributions is not None:
     actual_ate = np.array([
         dist.expect(lambda x: treatment_effect_shape(np.array([[x]]))[0], points=treatment_effect_breakpoints or None)
@@ -140,7 +143,7 @@ with open(run_dir / "summary.csv", "w", newline="") as f:
     for results in results_list:
         squared_errors = (results["estimated_ate_reps"] - actual_ate) ** 2
         mse = squared_errors.mean(axis=0)
-        # Monte Carlo standard error of the MSE: sd of the squared errors over reps / sqrt(N_REPS)
+        # Monte Carlo standard error of the MSE: sd of the squared errors over replications / sqrt(N_REPS)
         mcse_mse = squared_errors.std(axis=0, ddof=1) / np.sqrt(N_REPS)
         mean_estimate = results["estimated_ate_reps"].mean(axis=0)
         mean_prediction_var = results["prediction_var_reps"].mean(axis=0)
@@ -148,7 +151,7 @@ with open(run_dir / "summary.csv", "w", newline="") as f:
             writer.writerow([results["label"], dist_label, actual_ate[i], mean_estimate[i], mse[i], mcse_mse[i],
                              mean_prediction_var[i]])
 
-# per-rep estimates (N_REPS, n_scenarios) per learner, for paired comparisons across learners later
+# per-replication estimates (N_REPS, n_targets) per learner
 np.savez(run_dir / "estimates.npz", actual_ate=actual_ate,
          **{r["label"]: r["estimated_ate_reps"] for r in results_list})
 print(f"Saved to {run_dir}")

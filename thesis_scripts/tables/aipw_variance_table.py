@@ -2,9 +2,9 @@
 estimator: at the three central target distributions Beta(alpha, 10 - alpha), alpha = 4, 5, 6, of each
 experiment E1-E4, the variance of the AIPW-corrected estimate across the 100 replications, the mean
 estimated variance s_q^2 / n + s_T^2 / m, and the same estimate with the true residuals Y - mu_A(X),
-with their ratios to the empirical variance. Reads visualisation_output/ate_estimator_experiment_{1..4}/diagnostics.csv.
-Writes aipw_variance.tex next to this script
-(tabular, input by AppendixSimulation.tex). Run: python aipw_variance_table.py
+with their ratios to the empirical variance. Reads
+visualisation_output/ate_estimator_experiment_{1..4}/diagnostics.csv. Writes aipw_variance.tex next to
+this script (tabular, input by AppendixSimulation.tex). Run: python aipw_variance_table.py
 """
 import csv
 from pathlib import Path

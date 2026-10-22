@@ -1,3 +1,4 @@
+"""CATE meta-learners: T-, X- and DR-learner, each with a configurable base learner."""
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
 
@@ -5,7 +6,7 @@ from base_learners import get_classifier, get_regressor
 
 
 class TLearner:
-    """T-learner."""
+    """T-learner (Kuenzel et al., 2019): separate regressions in the two arms, CATE as their difference."""
 
     def __init__(self, base_learner: str = "rf", *, regressor_params: dict | None = None, random_state: int):
         self.base_learner = base_learner
@@ -57,11 +58,11 @@ class XLearner:
         self.mu0_model.fit(x[a == 0], y[a == 0])
         self.mu1_model.fit(x[a == 1], y[a == 1])
 
-        # Step 2: impute the missing potential outcome, forming per-unit pseudo-effects
+        # Step 2: impute the unobserved potential outcome, giving the imputed effects
         d1 = y[a == 1] - self.mu0_model.predict(x[a == 1])
         d0 = self.mu1_model.predict(x[a == 0]) - y[a == 0]
 
-        # Step 3: regress each arm's pseudo-outcome on x -> tau0_hat, tau1_hat
+        # Step 3: regress each arm's imputed effects on x -> tau0_hat, tau1_hat
         self.tau0_model.fit(x[a == 0], d0)
         self.tau1_model.fit(x[a == 1], d1)
 
@@ -78,12 +79,7 @@ class XLearner:
 
 
 class DRLearner:
-    """Doubly robust learner (Kennedy, 2023), with K-fold cross-fitting of the nuisance models.
-
-    The cross-fitting is required: nuisances evaluated in-sample (rf, small leaves) leave nearly no
-    residual, so the correction term vanishes and the pseudo-outcome collapses onto the T-learner's
-    estimate.
-    """
+    """Doubly robust learner (Kennedy, 2023), with K-fold cross-fitting of the nuisance models."""
 
     def __init__(
         self,
@@ -107,7 +103,7 @@ class DRLearner:
         self.tau_model = get_regressor(base_learner, random_state=random_state, rf_params=regressor_params)
 
     def _fit_nuisances(self, x, y, a):
-        """Fresh mu0, mu1 (as in T-learner) and propensity e (as in X-learner) fitted on (x, y, a)."""
+        """mu0, mu1 (as in the T-learner) and the propensity score e, fitted on (x, y, a)."""
         reg = dict(random_state=self.random_state, rf_params=self.regressor_params)
         mu0 = get_regressor(self.base_learner, **reg).fit(x[a == 0], y[a == 0])
         mu1 = get_regressor(self.base_learner, **reg).fit(x[a == 1], y[a == 1])
@@ -117,9 +113,7 @@ class DRLearner:
         return mu0, mu1, e
 
     def _pseudo_outcome(self, nuisances, x, y, a):
-        """AIPW pseudo-outcome, doubly robust to mu-model or propensity-model error. e_hat is
-        clipped away from 0/1 so a confident classifier can't blow up the inverse weights.
-        """
+        """Doubly robust pseudo-outcome; e_hat is clipped to [propensity_clip, 1 - propensity_clip]."""
         mu0, mu1, e = nuisances
         e_hat = np.clip(e.predict_proba(x)[:, 1], self.propensity_clip, 1 - self.propensity_clip)
         mu0_hat = mu0.predict(x)
@@ -129,9 +123,7 @@ class DRLearner:
     def fit(self, x, y, a):
         x, y, a = np.asarray(x), np.asarray(y), np.asarray(a)
 
-        # Steps 1+2: nuisances and pseudo-outcome, cross-fitted: each unit's phi comes from
-        # nuisances fitted on the other folds, never on the unit itself. Folds are stratified by
-        # a so every fold's training part keeps both arms in the original proportion.
+        # Steps 1-2: cross-fitted pseudo-outcomes; nuisances fitted on the other folds, folds stratified by a
         phi = np.empty(len(y))
         folds = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_state)
         for train_idx, held_idx in folds.split(x, a):

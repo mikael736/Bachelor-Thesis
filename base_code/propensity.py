@@ -1,4 +1,4 @@
-"""Propensity functions: e(x) = P(A=1 | X=x), used to assign treatment on the training sample.
+"""Propensity functions: e(x) = P(A=1 | X=x), used to assign treatment on the study sample.
 Each propensity score function takes one covariate coordinate (a 1-D array, shape (n,)) - pick
 the coordinate in the running script, e.g.
 

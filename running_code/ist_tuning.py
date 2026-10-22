@@ -1,7 +1,7 @@
 """Tune random-forest max_features and min_samples_leaf for the IST experiment by out-of-bag (OOB)
 Brier score of the nuisance models mu0, mu1 (outcome per arm) and e (aspirin allocation).
-Uses only the countries that are never a target, so the chosen setting is source-only for all
-three targets.
+Uses only the countries that are never a target, so the setting is chosen without any data of the
+three target countries.
 """
 import sys
 from pathlib import Path
