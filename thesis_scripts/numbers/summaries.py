@@ -52,7 +52,9 @@ def load(experiment):
     return results
 
 
-def detectable(a, b):
-    """Section "Plug-in estimates of the meta-learners": a difference of two MSEs is detectable if it exceeds
-    twice the sum of their MCSEs."""
+def detectable(a, b, measure="mse"):
+    """Section "Plug-in estimates of the meta-learners": a difference of two MSEs (measure "mse") or of two
+    absolute biases (measure "bias") is detectable if it exceeds twice the sum of their MCSEs."""
+    if measure == "bias":
+        return abs(abs(a.bias) - abs(b.bias)) > 2 * (a.mcse_bias + b.mcse_bias)
     return abs(a.mse - b.mse) > 2 * (a.mcse_mse + b.mcse_mse)

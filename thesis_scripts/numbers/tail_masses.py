@@ -2,7 +2,7 @@
 a = 2, ..., 8, in the tails x < 0.2 and x > 0.8, and the propensity score e(x) = 1 / (1 + exp(-5 (x - 0.5)))
 at x = 0, 0.2, 0.8, 1, and the expected number of treated and control units in both tails of a study
 sample of size n = 1000. Used for the paragraph "Covariate shift" and the propensity range in the paragraph
-"Data-generating process" of Chapter 5, and the unit counts in the paragraph "Complex baseline (E1, E4)".
+"Data-generating process" of Chapter 5, and the unit counts in the paragraph "X-learner and T-learner".
 Run: python tail_masses.py
 """
 import numpy as np

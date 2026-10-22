@@ -12,7 +12,6 @@ PI, AIPW = "Plug-in (naive CI)", "AIPW-corrected"
 res = load("ate_estimator_experiment")
 CENTRAL = TARGETS[2:5]  # Beta(4,6) to Beta(6,4)
 MODERATE = TARGETS[1:6]  # Beta(3,7) to Beta(7,3)
-SINE, LINEAR = (1, 4), (2, 3)
 
 
 def values(estimator, targets, field, experiments=(1, 2, 3, 4)):
@@ -26,11 +25,11 @@ for estimator in (PI, AIPW):
     print(f"{estimator}: max at {CENTER} {b([CENTER]):.3f}, from Beta(4,6) to Beta(6,4) {b(CENTRAL):.3f}, "
           f"at the ends {min(ends):.3f}-{max(ends):.3f}")
 for estimator in (PI, AIPW):
-    within = [(f"E{i}", t) for i in LINEAR for t in CENTRAL
-              if abs(res[i][estimator, t].bias) <= 2 * res[i][estimator, t].mcse_bias]
-    print(f"{estimator}, linear baseline, Beta(4,6) to Beta(6,4): |bias| <= 2 MCSE in {within}")
-ratio = [abs(res[i][PI, t].bias) / res[i][PI, t].mcse_bias for i in SINE for t in TARGETS]
-print(f"{PI}, sine baseline, every target: |bias| / MCSE at least {min(ratio):.1f}")
+    for i in res:
+        within = [t for t in CENTRAL if abs(res[i][estimator, t].bias) <= 2 * res[i][estimator, t].mcse_bias]
+        ratio = min(abs(res[i][estimator, t].bias) / res[i][estimator, t].mcse_bias for t in TARGETS)
+        print(f"{estimator}, E{i}: |bias| <= 2 MCSE from Beta(4,6) to Beta(6,4) at {within}; "
+              f"|bias| / MCSE over all targets at least {ratio:.1f}")
 reduced = all(abs(res[i][AIPW, t].bias) < abs(res[i][PI, t].bias) for i in res for t in ENDS)
 print(f"correction reduces the absolute bias at all ends: {reduced}")
 
@@ -58,9 +57,9 @@ for label, targets in (("Beta(4,6) to Beta(6,4)", CENTRAL), ("Beta(3,7) to Beta(
 for label, targets in ((CENTER, [CENTER]), ("ends", ENDS)):
     width = values(AIPW, targets, "mean_ci_width")
     print(f"mean width, {label}: {min(width):.2f}-{max(width):.2f}")
-for label, experiments in (("E1", (1,)), ("E3", (3,))):
-    cov = values(AIPW, MODERATE, "coverage", experiments)
-    cov_ends = values(AIPW, ENDS, "coverage", experiments)
-    naive_max = max(values(PI, TARGETS, "coverage", experiments))
-    print(f"{label} (Appendix): naive coverage at most {naive_max:.2f}, AIPW coverage Beta(3,7) to "
+for i in res:
+    cov = values(AIPW, MODERATE, "coverage", (i,))
+    cov_ends = values(AIPW, ENDS, "coverage", (i,))
+    naive_max = max(values(PI, TARGETS, "coverage", (i,)))
+    print(f"E{i}: naive coverage at most {naive_max:.2f}, AIPW coverage Beta(3,7) to "
           f"Beta(7,3) {min(cov):.2f}-{max(cov):.2f}, at the ends {min(cov_ends):.2f}-{max(cov_ends):.2f}")
