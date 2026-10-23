@@ -9,6 +9,9 @@ this script (tabular, input by AppendixSimulation.tex). Run: python aipw_varianc
 import csv
 from pathlib import Path
 
+import numpy as np
+from scipy import integrate, stats
+
 HERE = Path(__file__).resolve().parent
 OUTPUTS = HERE.parents[1] / "visualisation_output"  # experiment outputs of this repository
 CENTRAL = ["Beta(4,6)", "Beta(5,5)", "Beta(6,4)"]
@@ -39,3 +42,16 @@ out = HERE / "aipw_variance.tex"
 out.write_text(table, encoding="utf-8")
 print(table)
 print(f"Saved to {out}")
+
+# numbers quoted in Appendix C.4 and in the DR-learner paragraph of Section 5.2, at Beta(5,5) (r = 1):
+# E[1/(e(X)(1 - e(X)))] under the study distribution Beta(5,5) (variance of q* by Remark C.2, and the
+# conditional variance of the DR pseudo-outcome with true nuisances), divided by n = 1000 for the mean
+# of the correction terms; and the part of the true-residual estimate that belongs to q_bar
+e = lambda x: 1 / (1 + np.exp(-5 * (x - 0.5)))
+moment = integrate.quad(lambda x: stats.beta(5, 5).pdf(x) / (e(x) * (1 - e(x))), 0, 1)[0]
+print(f"\nE[1/(e(1-e))] under Beta(5,5): {moment:.2f}; divided by n = 1000: {moment / 1000:.4f}")
+for exp_num in range(1, 5):
+    with open(OUTPUTS / f"ate_estimator_experiment_{exp_num}" / "diagnostics.csv", newline="") as f:
+        r = {r["test_distribution"]: r for r in csv.DictReader(f)}["Beta(5,5)"]
+    print(f"E{exp_num}, Beta(5,5): q_bar part of the true-residual estimate "
+          f"{float(r['est_var_aipw_oracle_resid']) - float(r['est_var_t_bar']):.4f}")

@@ -1,7 +1,7 @@
 """Table of the IST estimates behind Figures fig:ist and fig:ist-ci (Section "Results" of Chapter 6):
 per target country the randomized estimate, the untransported study estimate, the transported
 plug-in estimates of the three meta-learners, and the plug-in (naive CI) and AIPW-corrected (CI)
-estimates of the cross-fitted T-learner, in percentage points. Reads
+estimates of the cross-fitted T-learner, in percentage points, each interval as its 95% CI. Reads
 visualisation_output/ist_experiment/results.csv. Writes ist_results.tex next to this script (tabular,
 input by IST.tex).
 Run: python ist_results_table.py
@@ -15,6 +15,9 @@ COUNTRY_NAMES = {"UK": "UK", "ITAL": "Italy", "SWIT": "Switzerland"}
 
 with open(OUTPUTS / "ist_experiment" / "results.csv", newline="") as f:
     rows = list(csv.DictReader(f))
+for r in rows:
+    half_width = (float(r["source_rd_ci_high"]) - float(r["source_rd_ci_low"])) / 2
+    print(f"{r['country']}: half-width of the study interval {half_width:.2f} pp")
 
 
 def number(value):
@@ -31,6 +34,7 @@ lines_spec = [
     ("Benchmark", lambda r: number(r["benchmark_rd"])),
     ("\\quad 95\\% normal-based interval", lambda r: interval(r, "benchmark_ci_low", "benchmark_ci_high")),
     ("Study, not transported", lambda r: number(r["source_rd_untransported"])),
+    ("\\quad 95\\% normal-based interval", lambda r: interval(r, "source_rd_ci_low", "source_rd_ci_high")),
     (None, "Transported plug-in estimates (Figure~\\ref{fig:ist})"),
     ("T-learner", lambda r: number(r["T-learner"])),
     ("X-learner", lambda r: number(r["X-learner"])),

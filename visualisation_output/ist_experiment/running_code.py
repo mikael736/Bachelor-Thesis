@@ -88,6 +88,7 @@ rows = []
 for country in TARGET_COUNTRIES:
     target = data.country == country
     rd, se, n1, n0 = risk_difference(data.y[target], data.a[target])
+    study_rd, study_se, _, _ = risk_difference(data.y[~target], data.a[~target])
     result = ate_results[country]
     ate_columns = {}
     for key in ("plug_in", "aipw"):
@@ -100,7 +101,9 @@ for country in TARGET_COUNTRIES:
         "n_target": int(target.sum()),
         "n_target_aspirin": n1,
         "n_target_control": n0,
-        "source_rd_untransported": 100 * risk_difference(data.y[~target], data.a[~target])[0],
+        "source_rd_untransported": 100 * study_rd,
+        "source_rd_ci_low": 100 * (study_rd - 1.96 * study_se),
+        "source_rd_ci_high": 100 * (study_rd + 1.96 * study_se),
         **{tag: 100 * est for tag, est in estimates[country].items()},
         **ate_columns,
         "ratio_capped_share": result["ratio_capped_share"],

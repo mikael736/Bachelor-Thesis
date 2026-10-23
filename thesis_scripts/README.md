@@ -11,7 +11,7 @@ Each script writes its `.tex` table next to itself; the tables are copied to the
 | Script | Table | Thesis |
 |---|---|---|
 | `bias_mse_tables.py` | `meta_bias.tex`, `meta_mse.tex`, `ate_bias.tex`, `ate_mse.tex` | Appendix C.1 |
-| `aipw_variance_table.py` | `aipw_variance.tex` | Appendix C.4 |
+| `aipw_variance_table.py` | `aipw_variance.tex` | Appendix C.4; also prints the variance of the correction with the true nuisance functions (Appendix C.4, DR-learner paragraph of Section 5.2) |
 | `ist_table.py` | `ist_data.tex` | Section 6.1 |
 | `ist_results_table.py` | `ist_results.tex` | Section 6.3 |
 

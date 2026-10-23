@@ -174,10 +174,9 @@ def plot_coverage(results_list, n_reps, save_path, width_ylim=(0, 2.6)):
 COUNTRY_NAMES = {"UK": "United Kingdom", "ITAL": "Italy", "SWIT": "Switzerland"}
 
 
-def _ist_errorbar(ax, x, rows, key, label, **style):
-    """Point rows[key] with its 95% CI from rows[key_ci_low], rows[key_ci_high] (key "benchmark" uses
-    the column benchmark_rd for the point)."""
-    point = np.array([r["benchmark_rd" if key == "benchmark" else key] for r in rows])
+def _ist_errorbar(ax, x, rows, key, label, point_key=None, **style):
+    """Point rows[point_key] (default rows[key]) with its 95% CI from rows[key_ci_low], rows[key_ci_high]."""
+    point = np.array([r[point_key or key] for r in rows])
     low, high = np.array([r[f"{key}_ci_low"] for r in rows]), np.array([r[f"{key}_ci_high"] for r in rows])
     return ax.errorbar(x, point, yerr=[point - low, high - point], linestyle="none", capsize=3, linewidth=1,
                        label=label, **style)
@@ -198,6 +197,8 @@ def _ist_figure(rows, n_markers):
 
 BENCHMARK_STYLE = dict(marker="D", color="black", markersize=4)
 BENCHMARK_LABEL = "Randomized estimate in target (95% CI)"
+STUDY_STYLE = dict(marker="o", color="grey", markerfacecolor="none")
+STUDY_LABEL = "Study, not transported"
 
 
 def plot_ist(rows, learner_labels, save_path):
@@ -206,9 +207,10 @@ def plot_ist(rows, learner_labels, save_path):
     each learner's transported estimate. The learners' own uncertainty is not shown.
     """
     fig, ax, positions = _ist_figure(rows, len(learner_labels) + 2)
-    handles = [_ist_errorbar(ax, positions[0], rows, "benchmark", BENCHMARK_LABEL, **BENCHMARK_STYLE)]
+    handles = [_ist_errorbar(ax, positions[0], rows, "benchmark", BENCHMARK_LABEL, point_key="benchmark_rd",
+                             **BENCHMARK_STYLE)]
     handles += ax.plot(positions[1], [r["source_rd_untransported"] for r in rows], linestyle="none",
-                       marker="o", color="grey", markerfacecolor="none", label="Study, not transported")
+                       label=STUDY_LABEL, **STUDY_STYLE)
     for i, (x, label) in enumerate(zip(positions[2:], learner_labels)):
         handles += ax.plot(x, [r[label] for r in rows], linestyle="none", label=label, **_style(i))
     _bottom_legend(fig, handles, ncol=3)
@@ -216,13 +218,17 @@ def plot_ist(rows, learner_labels, save_path):
 
 
 def plot_ist_ci(rows, save_path):
-    """Per target country: the randomized estimate, the cross-fitted T-learner's plug-in estimate with
-    its naive 95% CI and the AIPW-corrected estimate with its 95% CI (colors as in plot_coverage)."""
-    fig, ax, positions = _ist_figure(rows, 3)
+    """Per target country: the randomized estimate, the untransported study estimate, the cross-fitted
+    T-learner's plug-in estimate (naive CI) and the AIPW-corrected estimate, each with its 95% CI
+    (colors as in plot_coverage)."""
+    fig, ax, positions = _ist_figure(rows, 4)
     handles = [
-        _ist_errorbar(ax, positions[0], rows, "benchmark", BENCHMARK_LABEL, **BENCHMARK_STYLE),
-        _ist_errorbar(ax, positions[1], rows, "plug_in", "Plug-in (naive CI)", **_style(0)),
-        _ist_errorbar(ax, positions[2], rows, "aipw", "AIPW-corrected", **_style(1)),
+        _ist_errorbar(ax, positions[0], rows, "benchmark", BENCHMARK_LABEL, point_key="benchmark_rd",
+                      **BENCHMARK_STYLE),
+        _ist_errorbar(ax, positions[1], rows, "source_rd", f"{STUDY_LABEL} (95% CI)",
+                      point_key="source_rd_untransported", **STUDY_STYLE),
+        _ist_errorbar(ax, positions[2], rows, "plug_in", "Plug-in (naive CI)", **_style(0)),
+        _ist_errorbar(ax, positions[3], rows, "aipw", "AIPW-corrected", **_style(1)),
     ]
-    _bottom_legend(fig, handles)
+    _bottom_legend(fig, handles, ncol=2)
     _save(fig, save_path)
